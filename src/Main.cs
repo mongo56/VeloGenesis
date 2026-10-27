@@ -14,7 +14,7 @@ namespace VeloGenesis;
 ///
 /// Debug command line (after "--"):
 ///   --autoride=free|erg   start a simulated ride immediately
-///   --screen=setup|devices|settings|pause   open a screen
+///   --screen=setup|devices|settings|controls|strava|pause   open a screen
 ///   --shot=path.png --shot-after=8   save a screenshot then quit
 ///   --skip=metres  --camera=n  --finish-after=sec  --timescale=x  --sim-power=watts
 ///   --no-ble   skip Bluetooth auto-connect
@@ -39,6 +39,7 @@ public partial class Main : Node
     public override void _Ready()
     {
         Settings.Load();
+        Online.Strava.Load();
         foreach (var a in OS.GetCmdlineUserArgs())
             if (a.StartsWith("--quality=")) Settings.Current.Quality = a[10..];
             else if (a.StartsWith("--aa=")) Settings.Current.AntiAliasing = a[5..];
@@ -144,6 +145,11 @@ public partial class Main : Node
                     var cs = new ControlsScreen();
                     cs.Back += ShowSettings;
                     SetScreen(cs);
+                    break;
+                case "strava":
+                    var ss = new StravaScreen();
+                    ss.Back += ShowSettings;
+                    SetScreen(ss);
                     break;
             }
         }
@@ -266,6 +272,12 @@ public partial class Main : Node
         st.OpenControls += () =>
         {
             var c = new ControlsScreen();
+            c.Back += ShowSettings;
+            SetScreen(c);
+        };
+        st.OpenStrava += () =>
+        {
+            var c = new StravaScreen();
             c.Back += ShowSettings;
             SetScreen(c);
         };

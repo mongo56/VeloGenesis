@@ -27,6 +27,8 @@ public class Settings
 
     /// <summary>Write a virtual GPS track (in the open ocean) to FIT files so Strava draws a map.</summary>
     public bool VirtualGps = false;
+    /// <summary>Upload each saved ride to Strava as soon as the summary screen opens (when connected).</summary>
+    public bool StravaAutoUpload = false;
 
     /// <summary>Custom key bindings per action (physical keycodes, 0 = empty slot). Missing = defaults.</summary>
     public System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<long>> KeyBindings = new();

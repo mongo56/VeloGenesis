@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Godot;
 using VeloGenesis.Core;
+using VeloGenesis.Online;
 using VeloGenesis.Ride;
 
 namespace VeloGenesis.UI;
@@ -66,15 +67,91 @@ public partial class SummaryScreen : Screen
         v.AddChild(UiTheme.Label(_sum.FitPath != null ? $"Saved {Path.GetFileName(_sum.FitPath)} to Documents/VeloGenesis/Rides" : "Ride too short – nothing saved.", 20, UiTheme.Dim));
         var row = UiTheme.HBox(16);
         row.AddChild(UiTheme.Button("OPEN RIDES FOLDER", () => OS.ShellOpen(Paths.Rides), 22));
-        var strava = UiTheme.Button("UPLOAD TO STRAVA  (coming in milestone 2)", null, 22);
-        strava.Disabled = true;
-        strava.TooltipText = "For now, upload the .fit file at strava.com/upload/select";
-        row.AddChild(strava);
-        var spacer = new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        row.AddChild(spacer);
+        _strava = UiTheme.Button("UPLOAD TO STRAVA", OnStrava, 22);
+        _strava.Disabled = _sum.FitPath == null;
+        row.AddChild(_strava);
+        _stravaStatus = UiTheme.Label("", 19, UiTheme.Dim);
+        _stravaStatus.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _stravaStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        row.AddChild(_stravaStatus);
         var done = UiTheme.Button("MAIN MENU  ▶", () => Done?.Invoke(), 28, 280);
         row.AddChild(done);
         FirstFocus = done;
         v.AddChild(row);
+
+        // Strava's web uploader can't be pre-filled and ignores names in FIT files, so offer the text via the clipboard.
+        _pasteRow = UiTheme.HBox(16);
+        _pasteRow.Visible = false;
+        _pasteRow.AddChild(UiTheme.Label("For Strava's form:", 19, UiTheme.Dim));
+        _pasteRow.AddChild(UiTheme.Button("COPY TITLE", () => Copy(ActivityName(), "Title"), 19));
+        _pasteRow.AddChild(UiTheme.Button("COPY DESCRIPTION", () => Copy(ActivityDescription(), "Description"), 19));
+        v.AddChild(_pasteRow);
+
+        if (_sum.FitPath != null && Strava.Connected && Settings.Current.StravaAutoUpload)
+            OnStrava();
+    }
+
+    Button _strava;
+    Label _stravaStatus;
+    HBoxContainer _pasteRow;
+    string _activityUrl;
+    bool _uploading;
+
+    void Status(string text, Color color)
+    {
+        if (!IsInstanceValid(_stravaStatus)) return;
+        _stravaStatus.Text = text;
+        _stravaStatus.AddThemeColorOverride("font_color", color);
+    }
+
+    void Copy(string text, string what)
+    {
+        DisplayServer.ClipboardSet(text);
+        Status($"{what} copied. Paste it (Ctrl+V) into the matching field on Strava, then click Save.", UiTheme.Cyan);
+    }
+
+    async void OnStrava()
+    {
+        if (_activityUrl != null) { OS.ShellOpen(_activityUrl); return; }
+        if (_uploading || _sum.FitPath == null) return;
+        if (!Strava.Connected)
+        {
+            // No API app (Strava requires a subscription for one): hand the file to the web uploader.
+            Strava.OpenManualUpload(_sum.FitPath);
+            DisplayServer.ClipboardSet(ActivityName());
+            _pasteRow.Visible = true;
+            Status("Drag the highlighted .fit file onto the Strava page. The title is on your clipboard.", UiTheme.Cyan);
+            return;
+        }
+
+        _uploading = true;
+        _strava.Disabled = true;
+        var result = await Strava.Upload(_sum.FitPath, ActivityName(), ActivityDescription(), p => Status(p, UiTheme.Cyan));
+        _uploading = false;
+        if (!IsInstanceValid(_strava)) return;
+        _strava.Disabled = false;
+        if (result.ActivityId > 0)
+        {
+            _activityUrl = result.Url;
+            _strava.Text = "VIEW ON STRAVA  ↗";
+            Status(result.Duplicate ? "Already on Strava." : "Uploaded to Strava!", UiTheme.Lime);
+        }
+        else
+        {
+            _strava.Text = "RETRY STRAVA UPLOAD";
+            Status(result.Error, UiTheme.Red);
+        }
+    }
+
+    string ActivityName() =>
+        _sum.Mode == RideMode.Erg && !string.IsNullOrEmpty(_sum.WorkoutName) ? $"VeloGenesis · {_sum.WorkoutName}" : "VeloGenesis · Free ride";
+
+    string ActivityDescription()
+    {
+        var lines = new System.Collections.Generic.List<string> { $"Procedural neon ride · {_sum.ForksTaken} forks taken" };
+        if (_sum.Sectors.Count > 0) lines.Add("Sectors: " + string.Join(" · ", _sum.Sectors));
+        if (_sum.PowerGels) lines.Add($"Power gels: {_sum.Gels}/{_sum.GelsSeen} · Slipstreams: {_sum.SlipstreamsUsed}");
+        if (_sum.RacesWon + _sum.RacesLost > 0) lines.Add($"Ghost races won: {_sum.RacesWon}/{_sum.RacesWon + _sum.RacesLost}");
+        return string.Join("\n", lines);
     }
 }

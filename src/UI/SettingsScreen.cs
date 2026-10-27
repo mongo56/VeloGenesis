@@ -81,10 +81,11 @@ public partial class SettingsScreen : Screen
         var back = UiTheme.Button("◀  SAVE & BACK", () => { Settings.Save(); Back?.Invoke(); }, 24, 260);
         buttons.AddChild(back);
         buttons.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        buttons.AddChild(UiTheme.Button(Online.Strava.Connected ? "STRAVA  ✓" : "STRAVA", () => { Settings.Save(); OpenStrava?.Invoke(); }, 22));
         buttons.AddChild(UiTheme.Button("⌨  CONTROLS / KEY BINDINGS", () => { Settings.Save(); OpenControls?.Invoke(); }, 22));
         v.AddChild(buttons);
         FirstFocus = ftp.GetLineEdit();
     }
 
-    public event Action QualityChanged, AudioChanged, VolumeChanged, OpenControls, AntiAliasingChanged;
+    public event Action QualityChanged, AudioChanged, VolumeChanged, OpenControls, OpenStrava, AntiAliasingChanged;
 }

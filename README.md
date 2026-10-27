@@ -71,9 +71,26 @@ All bindings can be changed in **Settings → Controls / Key bindings** (default
 | Pause | Esc / P | Start |
 | Simulator power | W / S | Triggers |
 
+## Strava
+
+**UPLOAD TO STRAVA** on the ride summary works without any setup. It opens Strava's web uploader and an
+Explorer window with the ride's .fit file selected, and you drag the file onto the page.
+
+**Direct upload (optional, needs a Strava subscription).** Since June 2026 Strava only lets subscribers
+create API apps. If you have a subscription, you can connect the game for one-click or automatic uploads:
+
+1. Go to **Settings → Strava → Open Strava API page** (strava.com/settings/api) and create an app.
+   Any name and website work. Set **Authorization Callback Domain** to `localhost`.
+2. Paste the **Client ID** and **Client Secret** into the Strava screen and click **Connect with Strava**.
+   Approve access in the browser. The game listens on a random loopback port for the redirect.
+3. Rides are then uploaded directly as trainer rides, named after the mode or workout, with sectors and
+   races in the description. Uploading a ride a second time links to the existing activity.
+
+Credentials and tokens are stored in `%APPDATA%/Godot/app_userdata/VeloGenesis/strava.json`.
+
 ## Files
 
-- Rides: `Documents/VeloGenesis/Rides/*.fit` (cycling / virtual activity; upload these to Strava manually for now)
+- Rides: `Documents/VeloGenesis/Rides/*.fit` (cycling / virtual activity)
 - Your music: `Documents/VeloGenesis/Music` (.mp3 / .ogg / .wav). Choose the source in Settings.
 - Settings: `%APPDATA%/Godot/app_userdata/VeloGenesis/settings.json`
 
@@ -85,15 +102,15 @@ src/Core/                   settings, quality presets, input map, main-thread di
 src/Devices/                WinRT BLE: scanner, FTMS trainer (ERG + sim), HR strap, keyboard simulator
 src/Ride/                   ride loop, physics, virtual gearing, fork decider, workouts, recorder, FIT writer
 src/World/                  course generator, mesh builder (worker thread), streaming world, shaders, avatar
+src/Online/                 Strava OAuth (loopback redirect) + FIT upload
 src/Audio/                  procedural synthwave engine + music director
 src/UI/                     neon theme, HUD, graphs, menus
 ```
 
-Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|devices|settings|pause`,
+Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|devices|settings|controls|strava|pause`,
 `--shot=out.png --shot-after=8`, `--skip=metres`, `--timescale=6`, `--sim-power=300`, `--seed=n`,
 `--quality=Low|Medium|High|Ultra`, `--finish-after=sec`, `--camera=n`, `--no-ble`.
 
 ## Roadmap
 
-- **Milestone 2:** Strava OAuth (local loopback redirect) and one-click upload from the ride summary.
 - Ideas: ghost of your previous ride, achievements for sectors, ANT+ FE-C, exported/installer builds.
