@@ -41,7 +41,7 @@ public static class InputSetup
         new(Pause, "Pause", new[] { Key.Escape, Key.P }, new[] { JoyButton.Start }),
         new(Camera, "Change camera", new[] { Key.C }, new[] { JoyButton.Y }),
         new(ToggleHud, "Show / hide HUD", new[] { Key.H }, Array.Empty<JoyButton>()),
-        new(NextTrack, "Next music track", new[] { Key.N }, new[] { JoyButton.Back }),
+        new(NextTrack, "Skip song", new[] { Key.N }, new[] { JoyButton.Back }),
         new(Screenshot, "Screenshot", new[] { Key.F12 }, Array.Empty<JoyButton>()),
         new(SimPowerUp, "Simulator: more power", new[] { Key.W, Key.Equal }, Array.Empty<JoyButton>()),
         new(SimPowerDown, "Simulator: less power", new[] { Key.S, Key.Minus }, Array.Empty<JoyButton>()),

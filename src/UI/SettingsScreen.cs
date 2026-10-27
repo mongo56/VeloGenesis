@@ -59,16 +59,35 @@ public partial class SettingsScreen : Screen
 
         v.AddChild(Section("AUDIO"));
         var src = new OptionButton();
-        string[] sources = { "Procedural", "Files", "Both" };
+        string[] sources = { "Procedural", "Files", "Both", "External" };
         src.AddItem("Procedural synthwave");
         src.AddItem("My music folder");
         src.AddItem("Both (shuffle)");
+        src.AddItem("YouTube Music / other player");
         src.Selected = Math.Max(0, Array.IndexOf(sources, s.MusicSource));
-        src.ItemSelected += i => { s.MusicSource = sources[i]; AudioChanged?.Invoke(); };
         var srcRow = UiTheme.HBox(12);
         srcRow.AddChild(src);
-        srcRow.AddChild(UiTheme.Button("OPEN MUSIC FOLDER", () => OS.ShellOpen(Paths.Music), 18));
-        v.AddChild(Row("Music", srcRow, "Drop .mp3 / .ogg / .wav files into Documents/VeloGenesis/Music."));
+        var folder = UiTheme.Button("OPEN MUSIC FOLDER", () => OS.ShellOpen(Paths.Music), 18);
+        var liked = UiTheme.Button("LIKED MUSIC", () => OS.ShellOpen(Audio.ExternalPlayer.LikedMusicUrl), 18);
+        var ytm = UiTheme.Button("YT MUSIC HOME", () => OS.ShellOpen(Audio.ExternalPlayer.YouTubeMusicUrl), 18);
+        ytm.TooltipText = "Your Supermix and other mixes are at the top of the home page.";
+        srcRow.AddChild(folder);
+        srcRow.AddChild(liked);
+        srcRow.AddChild(ytm);
+        var musicRow = Row("Music", srcRow, "");
+        var musicHelp = (Label)musicRow.GetChild(musicRow.GetChildCount() - 1);
+        void ShowSource()
+        {
+            bool ext = s.MusicSource == "External";
+            folder.Visible = !ext;
+            liked.Visible = ytm.Visible = ext;
+            musicHelp.Text = ext
+                ? "Play YouTube Music (or Spotify…) in your browser. Skip song controls it; the volume is set in the browser."
+                : "Drop .mp3 / .ogg / .wav files into Documents/VeloGenesis/Music.";
+        }
+        ShowSource();
+        src.ItemSelected += i => { s.MusicSource = sources[i]; ShowSource(); AudioChanged?.Invoke(); };
+        v.AddChild(musicRow);
         v.AddChild(Row("Music volume", UiTheme.VolumeSlider(s.MusicVolume, x => { s.MusicVolume = x; VolumeChanged?.Invoke(); })));
         v.AddChild(Row("Effects volume", UiTheme.VolumeSlider(s.SfxVolume, x => { s.SfxVolume = x; VolumeChanged?.Invoke(); })));
 

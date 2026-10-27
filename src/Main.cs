@@ -18,6 +18,7 @@ namespace VeloGenesis;
 ///   --shot=path.png --shot-after=8   save a screenshot then quit
 ///   --skip=metres  --camera=n  --finish-after=sec  --timescale=x  --sim-power=watts
 ///   --no-ble   skip Bluetooth auto-connect
+///   --music=Procedural|Files|Both|External   override the music source for this run
 /// </summary>
 public partial class Main : Node
 {
@@ -43,6 +44,7 @@ public partial class Main : Node
         foreach (var a in OS.GetCmdlineUserArgs())
             if (a.StartsWith("--quality=")) Settings.Current.Quality = a[10..];
             else if (a.StartsWith("--aa=")) Settings.Current.AntiAliasing = a[5..];
+            else if (a.StartsWith("--music=")) Settings.Current.MusicSource = a[8..];
         InputSetup.Register();
         Quality.Get(Settings.Current.Quality).ApplyToViewport(GetViewport());
         DisplayServer.WindowSetTitle("VeloGenesis");
@@ -303,12 +305,14 @@ public partial class Main : Node
         if (_pause != null && IsInstanceValid(_pause))
         {
             _ride.Paused = false;
+            _music.SetRidePaused(false);
             Settings.Save(); // keep volume changes made in the pause menu
             _pause = null;
             SetScreen(null);
             return;
         }
         _ride.Paused = true;
+        _music.SetRidePaused(true);
         _pause = new PauseMenu();
         _pause.Resume += TogglePause;
         _pause.EndRide += () => EndRide(true);

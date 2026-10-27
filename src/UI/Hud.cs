@@ -332,7 +332,7 @@ public partial class Hud : Control
         _status.Text = $"TRAINER  {tr.Name} {(tr.IsSimulated ? $"({VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.SimPowerUp, false)} / {VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.SimPowerDown, false)} to change power)" : $"({(DeviceManager.BleTrainer?.Status ?? "")})")}   ·   HR  {hrName}   ·   ♪ {r.NowPlaying}"
             + (s.ShowFps ? $"   ·   {Engine.GetFramesPerSecond():0} fps" : "");
         _hint.Text = (VeloGenesis.Main.TestMode ? $"TIME ×{Engine.TimeScale:0}  [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.TimeSlower, false)}/{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.TimeFaster, false)}]   ·   " : "")
-            + $"CAM {r.CameraMode}  [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.Camera, false)}]   ·   HUD [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.ToggleHud, false)}]   ·   NEXT TRACK [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.NextTrack, false)}]   ·   PAUSE [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.Pause, false)}]";
+            + $"CAM {r.CameraMode}  [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.Camera, false)}]   ·   HUD [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.ToggleHud, false)}]   ·   SKIP SONG [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.NextTrack, false)}]   ·   PAUSE [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.Pause, false)}]";
     }
 
     void UpdateRace()

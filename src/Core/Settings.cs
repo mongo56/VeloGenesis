@@ -21,7 +21,7 @@ public class Settings
     public float TrainerDifficulty = 0.5f;
     public bool VirtualShifting = true;
 
-    public string MusicSource = "Procedural"; // Procedural, Files, Both
+    public string MusicSource = "Procedural"; // Procedural, Files, Both, External
     public float MusicVolume = 0.5f;
     public float SfxVolume = 0.8f;
 

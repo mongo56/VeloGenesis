@@ -67,7 +67,7 @@ All bindings can be changed in **Settings → Controls / Key bindings** (default
 | Screenshot | F12 | |
 | Test rides only: time slower / faster (1×–8×) | F6 / F7 | |
 | Toggle HUD | H | |
-| Next music track | N | Back |
+| Skip song | N | Back |
 | Pause | Esc / P | Start |
 | Simulator power | W / S | Triggers |
 
@@ -92,6 +92,11 @@ Credentials and tokens are stored in `%APPDATA%/Godot/app_userdata/VeloGenesis/s
 
 - Rides: `Documents/VeloGenesis/Rides/*.fit` (cycling / virtual activity)
 - Your music: `Documents/VeloGenesis/Music` (.mp3 / .ogg / .wav). Choose the source in Settings.
+- **YouTube Music / other player:** set Settings → Music to *YouTube Music / other player*. The game's own
+  music turns off. It then follows whatever is playing in the Windows media controls: YouTube Music in Firefox,
+  Chrome or Edge, Spotify, and so on. The HUD shows the song, *Skip song* skips it, and pausing the ride pauses
+  it. **Liked music** and **YT Music home** (where your Supermix is) open in your default browser.
+  Set the volume in the browser.
 - Settings: `%APPDATA%/Godot/app_userdata/VeloGenesis/settings.json`
 
 ## Code map
@@ -109,7 +114,7 @@ src/UI/                     neon theme, HUD, graphs, menus
 
 Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|devices|settings|controls|strava|pause`,
 `--shot=out.png --shot-after=8`, `--skip=metres`, `--timescale=6`, `--sim-power=300`, `--seed=n`,
-`--quality=Low|Medium|High|Ultra`, `--finish-after=sec`, `--camera=n`, `--no-ble`.
+`--quality=Low|Medium|High|Ultra`, `--music=Procedural|Files|Both|External`, `--finish-after=sec`, `--camera=n`, `--no-ble`.
 
 ## Roadmap
 

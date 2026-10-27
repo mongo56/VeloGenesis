@@ -137,7 +137,7 @@ public partial class PauseMenu : Screen
             $"Gear up  —  {InputSetup.Describe(InputSetup.GearUp)}     Gear down  —  {InputSetup.Describe(InputSetup.GearDown)}\n" +
             $"Fork  —  push harder / ease off, or {InputSetup.Describe(InputSetup.ForkLeft, false)}  /  {InputSetup.Describe(InputSetup.ForkRight, false)}, D-pad, left stick\n" +
             $"Slipstream  —  {InputSetup.Describe(InputSetup.Slipstream)}     Camera  —  {InputSetup.Describe(InputSetup.Camera)}\n" +
-            $"Pause  —  {InputSetup.Describe(InputSetup.Pause)}     Next track  —  {InputSetup.Describe(InputSetup.NextTrack)}     Screenshot  —  {InputSetup.Describe(InputSetup.Screenshot, false)}\n" +
+            $"Pause  —  {InputSetup.Describe(InputSetup.Pause)}     Skip song  —  {InputSetup.Describe(InputSetup.NextTrack)}     Screenshot  —  {InputSetup.Describe(InputSetup.Screenshot, false)}\n" +
             $"Simulator power  —  {InputSetup.Describe(InputSetup.SimPowerUp, false)} / {InputSetup.Describe(InputSetup.SimPowerDown, false)} or gamepad triggers", 17, UiTheme.Dim);
         help.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         v.AddChild(help);

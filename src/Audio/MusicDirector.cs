@@ -9,7 +9,8 @@ namespace VeloGenesis.Audio;
 
 /// <summary>
 /// Chooses between the procedural synth and the player's own tracks in Documents/VeloGenesis/Music.
-/// "Both" shuffles your files with ~4 minute procedural interludes.
+/// "Both" shuffles your files with ~4 minute procedural interludes. "External" silences the game's music
+/// and follows / controls another player (YouTube Music in the browser, Spotify…) via ExternalPlayer.
 /// </summary>
 public partial class MusicDirector : Node
 {
@@ -20,6 +21,9 @@ public partial class MusicDirector : Node
     bool _procTurn;
     double _procTimer;
     readonly Random _rng = new();
+    bool _pausedExternal;
+
+    static bool External => Settings.Current.MusicSource == "External";
 
     public string NowPlaying { get; private set; } = "";
     public event Action<string> TrackChanged;
@@ -29,7 +33,8 @@ public partial class MusicDirector : Node
         EnsureBuses();
         Synth = new SynthwaveEngine();
         AddChild(Synth);
-        Synth.SongChanged += name => { if (!_files.Playing) SetNowPlaying(name); };
+        Synth.SongChanged += name => { if (!_files.Playing && !External) SetNowPlaying(name); };
+        ExternalPlayer.Changed += () => { if (External) SetNowPlaying(ExternalNowPlaying); };
         _files = new AudioStreamPlayer { Bus = "Master" };
         _files.Finished += Next;
         AddChild(_files);
@@ -63,7 +68,15 @@ public partial class MusicDirector : Node
             .Where(f => f.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
             .OrderBy(_ => _rng.Next()).ToList();
 
-        if (s.MusicSource == "Procedural" || _playlist.Count == 0)
+        if (External)
+        {
+            _files.Stop();
+            _procTurn = false;
+            Synth.MusicOn = false;
+            _ = ExternalPlayer.Start();
+            SetNowPlaying(ExternalNowPlaying);
+        }
+        else if (s.MusicSource == "Procedural" || _playlist.Count == 0)
         {
             _files.Stop();
             Synth.MusicOn = true;
@@ -72,9 +85,33 @@ public partial class MusicDirector : Node
         else if (!_files.Playing && !_procTurn) Next();
     }
 
+    static string ExternalNowPlaying =>
+        ExternalPlayer.NowPlaying.Length > 0 ? ExternalPlayer.NowPlaying : "External player – start YouTube Music in your browser";
+
+    /// <summary>Pauses the external player with the ride (and resumes it only if we paused it).</summary>
+    public void SetRidePaused(bool paused)
+    {
+        if (!External) return;
+        if (paused && ExternalPlayer.IsPlaying)
+        {
+            ExternalPlayer.Pause();
+            _pausedExternal = true;
+        }
+        else if (!paused && _pausedExternal)
+        {
+            ExternalPlayer.Play();
+            _pausedExternal = false;
+        }
+    }
+
     public void Next()
     {
         var s = Settings.Current;
+        if (External)
+        {
+            ExternalPlayer.Next();
+            return;
+        }
         if (s.MusicSource == "Procedural" || _playlist.Count == 0)
         {
             Synth.NewSong();
