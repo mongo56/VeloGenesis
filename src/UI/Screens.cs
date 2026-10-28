@@ -54,7 +54,7 @@ public partial class MainMenu : Screen
     protected override void Build()
     {
         Dim = 0f;
-        var panel = UiTheme.Anchor(UiTheme.Panel(UiTheme.Magenta, 0.55f, 36), 0, 0.5f, 90, 0, 600, 0);
+        var panel = UiTheme.Anchor(UiTheme.Panel(0.55f, 36), 0, 0.5f, 90, 0, 600, 0);
         AddChild(panel);
         var v = UiTheme.VBox(14);
         panel.AddChild(v);
@@ -100,7 +100,7 @@ public partial class PauseMenu : Screen
     protected override void Build()
     {
         Dim = 0.6f;
-        var panel = UiTheme.Anchor(UiTheme.Panel(UiTheme.Magenta, 0.9f, 32), 0.5f, 0.5f, -430, 0, 860, 0);
+        var panel = UiTheme.Anchor(UiTheme.Panel(0.9f, 32), 0.5f, 0.5f, -430, 0, 860, 0);
         AddChild(panel);
         var v = UiTheme.VBox(14);
         panel.AddChild(v);

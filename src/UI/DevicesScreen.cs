@@ -18,7 +18,7 @@ public partial class DevicesScreen : Screen
     protected override void Build()
     {
         Dim = 0.5f;
-        var panel = UiTheme.Anchor(UiTheme.Panel(UiTheme.Cyan, 0.9f, 30), 0.5f, 0.5f, -640, -440, 1280, 880);
+        var panel = UiTheme.Anchor(UiTheme.Panel(0.9f, 30), 0.5f, 0.5f, -640, -440, 1280, 880);
         AddChild(panel);
         var v = UiTheme.VBox(12);
         panel.AddChild(v);

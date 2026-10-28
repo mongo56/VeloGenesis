@@ -20,7 +20,7 @@ public partial class SummaryScreen : Screen
     {
         Dim = 0.6f;
         var st = _sum.Stats;
-        var panel = UiTheme.Anchor(UiTheme.Panel(UiTheme.Magenta, 0.92f, 32), 0.5f, 0.5f, -700, 0, 1400, 0);
+        var panel = UiTheme.Anchor(UiTheme.Panel(0.92f, 32), 0.5f, 0.5f, -700, 0, 1400, 0);
         AddChild(panel);
         var v = UiTheme.VBox(14);
         panel.AddChild(v);

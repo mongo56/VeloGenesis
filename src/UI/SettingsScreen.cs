@@ -13,7 +13,7 @@ public partial class SettingsScreen : Screen
     {
         Dim = 0.5f;
         var s = Settings.Current;
-        var panel = UiTheme.Anchor(UiTheme.Panel(UiTheme.Cyan, 0.9f, 30), 0.5f, 0.5f, -680, 0, 1360, 0);
+        var panel = UiTheme.Anchor(UiTheme.Panel(0.9f, 30), 0.5f, 0.5f, -680, 0, 1360, 0);
         AddChild(panel);
         var v = UiTheme.VBox(10);
         panel.AddChild(v);

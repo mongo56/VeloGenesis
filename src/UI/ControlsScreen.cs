@@ -20,7 +20,7 @@ public partial class ControlsScreen : Screen
     protected override void Build()
     {
         Dim = 0.55f;
-        var panel = UiTheme.Anchor(UiTheme.Panel(UiTheme.Cyan, 0.92f, 28), 0.5f, 0.5f, -720, -470, 1440, 940);
+        var panel = UiTheme.Anchor(UiTheme.Panel(0.92f, 28), 0.5f, 0.5f, -720, -470, 1440, 940);
         AddChild(panel);
         var v = UiTheme.VBox(10);
         panel.AddChild(v);

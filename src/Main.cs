@@ -18,6 +18,7 @@ namespace VeloGenesis;
 ///   --shot=path.png --shot-after=8   save a screenshot then quit
 ///   --skip=metres  --camera=n  --finish-after=sec  --timescale=x  --sim-power=watts
 ///   --no-ble   skip Bluetooth auto-connect
+///   --nohud    hide the ride HUD (for checking the 3D scene in screenshots)
 ///   --music=Procedural|Files|Both|External   override the music source for this run
 /// </summary>
 public partial class Main : Node
@@ -31,6 +32,7 @@ public partial class Main : Node
     string _shotPath;
     double _shotAfter = -1, _clock, _finishAfter = -1;
     int _cameraCycles, _seed = 4242, _slip;
+    bool _noHud;
     bool _ghostDbg;
 
     /// <summary>Set by --test (TestRide.bat): enables F6 / F7 time scaling.</summary>
@@ -69,6 +71,7 @@ public partial class Main : Node
             else if (a.StartsWith("--camera=")) _cameraCycles = int.Parse(a[9..]);
             else if (a.StartsWith("--seed=")) _seed = int.Parse(a[7..]);
             else if (a.StartsWith("--slip=")) _slip = int.Parse(a[7..]);
+            else if (a == "--nohud") _noHud = true;
             else if (a == "--ghost") _ghostDbg = true;
             else if (a.StartsWith("--timescale="))Engine.TimeScale = double.Parse(a[12..], inv);
             else if (a.StartsWith("--sim-power=")) DeviceManager.Simulator.Effort = float.Parse(a[12..], inv);
@@ -133,6 +136,7 @@ public partial class Main : Node
             _ride.DebugCameraCycles = _cameraCycles;
             _ride.DebugSlip = _slip;
             _ride.DebugGhost = _ghostDbg;
+            if (_noHud) Callable.From(() => { if (_ride?.Hud != null) _ride.Hud.Visible = false; }).CallDeferred();
             if (screen == "pause") TogglePause();
         }
         else

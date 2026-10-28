@@ -389,17 +389,14 @@ public partial class WorldRoot : Node3D
             light.LightEnergy = 3f;
             gate.AddChild(light);
         }
-        gate.AddChild(new Label3D
-        {
-            Text = text,
-            FontSize = 160,
-            PixelSize = 0.012f,
-            Position = new Vector3(0, height + 1.4f, 0),
-            Modulate = color.Lightened(0.3f),
-            OutlineSize = 28,
-            OutlineModulate = new Color(0, 0, 0.02f, 0.9f),
-            Font = UI.UiTheme.Font3D,
-        });
+        // Sign panel hung under the top beam.
+        var board = HoloBoard.Build(color, new[] { new HoloBoard.Line(text, 150, HoloBoard.Glow(color.Lightened(0.55f), 1.6f)) }, HorizontalAlignment.Center, 3.2f);
+        board.Position = new Vector3(0, height - 0.25f - HoloBoard.SizeOf(board).Y, 0);
+        gate.AddChild(board);
+        // Short hangers from the beam to the panel corners.
+        float hw = HoloBoard.SizeOf(board).X * 0.5f - 0.6f;
+        foreach (int side in new[] { -1, 1 })
+            gate.AddChild(new MeshInstance3D { Mesh = _beamMesh, MaterialOverride = mat, Position = new Vector3(side * hw, height - 0.2f, 0), Scale = new Vector3(0.06f, 0.3f, 0.06f) });
         return gate;
     }
 
@@ -432,22 +429,25 @@ public partial class WorldRoot : Node3D
         {
             if (c.Visual == null) continue;
             c.Sample(Math.Min(130f, c.Length), out var p, out float h, out _);
-            string arrow = c.Side < 0 ? "◀" : "▶";
+            string dir = c.Side < 0 ? "◀  LEFT" : "RIGHT  ▶";
             string tag = c.IsHarder ? "PUSH ▲" : "EASE ▼";
-            var label = new Label3D
+            var accent = c.Primary;
+            var label = HoloBoard.Build(accent, new[]
             {
-                Text = $"{arrow}  {c.Name.ToUpper()}\n{c.Length / 1000f:0.0} km  ·  +{c.Gain:0} m  ·  {tag}",
-                FontSize = 72,
-                PixelSize = 0.011f,
-                Modulate = c.Primary.Lightened(0.25f),
-                OutlineSize = 22,
-                OutlineModulate = new Color(0, 0, 0.02f, 0.9f),
-                Font = UI.UiTheme.Font3D,
-                Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
-                HorizontalAlignment = c.Side < 0 ? HorizontalAlignment.Right : HorizontalAlignment.Left,
-                Position = p + Segment.RightOf(h) * c.Side * (WorldBuilder.RoadHalfWidth + 9f) + Vector3.Up * 5.5f,
-            };
-            c.Visual.AddChild(label);
+                new HoloBoard.Line($"{dir}   ·   {tag}", 72, HoloBoard.Glow(UI.UiTheme.CaptionColor, 1.2f), 0.18f),
+                new HoloBoard.Line(c.Name.ToUpper(), 180, HoloBoard.Glow(accent.Lightened(0.45f), 1.5f), 0.2f),
+                new HoloBoard.Line($"{c.Length / 1000f:0.0} km   ·   +{c.Gain:0} m   ·   max {c.MaxGrade:0}%", 78, new Color(0.85f, 0.88f, 1f)),
+            });
+            var size = HoloBoard.SizeOf(label);
+            // Stand beside the branch, facing the oncoming rider and angled slightly towards the road.
+            var ground = p + Segment.RightOf(h) * c.Side * (WorldBuilder.RoadHalfWidth + 4f + size.X * 0.5f);
+            var sign = new Node3D { Transform = new Transform3D(Basis.FromEuler(new Vector3(0, -h, 0)) * Basis.FromEuler(new Vector3(0, -c.Side * 0.35f, 0)), ground) };
+            label.Position = new Vector3(0, 4.2f, 0);
+            sign.AddChild(label);
+            var postMat = Meshes.Glow(accent, 2.2f);
+            foreach (int sx in new[] { -1, 1 })
+                sign.AddChild(new MeshInstance3D { Mesh = _beamMesh, MaterialOverride = postMat, Position = new Vector3(sx * (size.X * 0.5f - 1.2f), 1.6f, -0.08f), Scale = new Vector3(0.18f, 5.4f, 0.18f) });
+            c.Visual.AddChild(sign);
         }
     }
 

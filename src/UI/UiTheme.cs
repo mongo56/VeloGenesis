@@ -13,21 +13,68 @@ public static class UiTheme
     public static readonly Color Red = new(1f, 0.25f, 0.3f);
     public static readonly Color Text = new(0.92f, 0.95f, 1f);
     public static readonly Color Dim = new(0.62f, 0.66f, 0.82f);
-    public static readonly Color PanelBg = new(0.02f, 0.01f, 0.07f, 0.74f);
 
-    static Font _font, _bold, _font3D;
+    static Font _font, _bold, _semi, _caption, _font3D;
     static Theme _theme;
+    static ShaderMaterial _glassMat;
 
-    public static Font Font => _font ??= new SystemFont { FontNames = new[] { "Bahnschrift", "Segoe UI", "Arial" }, FontWeight = 400 };
-    public static Font Bold => _bold ??= new SystemFont { FontNames = new[] { "Bahnschrift", "Segoe UI", "Arial" }, FontWeight = 700 };
-    public static Font Font3D => _font3D ??= new SystemFont { FontNames = new[] { "Bahnschrift", "Segoe UI", "Arial" }, FontWeight = 600, MultichannelSignedDistanceField = true };
+    // Chakra Petch (SIL OFL, assets/fonts); symbols it lacks (◀ ▲ ◆ ♪ …) fall back to system fonts.
+    static FontFile Load(string weight)
+    {
+        var f = (FontFile)GD.Load<FontFile>($"res://assets/fonts/ChakraPetch-{weight}.ttf").Duplicate();
+        f.Fallbacks = new Godot.Collections.Array<Font> { new SystemFont { FontNames = new[] { "Segoe UI Symbol", "Segoe UI", "Bahnschrift", "Arial" } } };
+        return f;
+    }
 
+    public static Font Font => _font ??= Load("Medium");
+    public static Font Bold => _bold ??= Load("Bold");
+    public static Font SemiBold => _semi ??= Load("SemiBold");
+    /// <summary>Small uppercase panel captions, slightly letter-spaced.</summary>
+    public static Font Caption => _caption ??= new FontVariation { BaseFont = SemiBold, SpacingGlyph = 2 };
+    public static Font Font3D => _font3D ??= MakeFont3D();
+
+    static Font MakeFont3D()
+    {
+        var f = Load("Bold");
+        f.MultichannelSignedDistanceField = true;
+        f.MsdfPixelRange = 16;
+        f.MsdfSize = 64;
+        return f;
+    }
+
+    /// <summary>Caption colour: the single HUD accent, softened.</summary>
+    public static readonly Color CaptionColor = new(0.45f, 0.85f, 1f, 0.8f);
+
+    /// <summary>Chamfered box (top-left and bottom-right corners cut at 45°), the shape used for all UI.</summary>
     public static StyleBoxFlat Box(Color bg, Color border, int borderWidth = 2, int radius = 6, int margin = 14)
     {
-        var sb = new StyleBoxFlat { BgColor = bg, BorderColor = border };
+        var sb = new StyleBoxFlat { BgColor = bg, BorderColor = border, CornerDetail = 1 };
         sb.SetBorderWidthAll(borderWidth);
-        sb.SetCornerRadiusAll(radius);
+        sb.CornerRadiusTopLeft = sb.CornerRadiusBottomRight = radius * 2;
+        sb.CornerRadiusTopRight = sb.CornerRadiusBottomLeft = 0;
         sb.SetContentMarginAll(margin);
+        return sb;
+    }
+
+    /// <summary>Frosted dark glass: blurs and darkens whatever is behind the panel.</summary>
+    public static ShaderMaterial GlassMaterial => _glassMat ??= new ShaderMaterial { Shader = new Shader { Code = @"
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float bg_alpha = 0.6;
+void fragment() {
+    vec4 c = COLOR;
+    vec3 behind = textureLod(screen_tex, SCREEN_UV, 3.5).rgb;
+    float l = dot(behind, vec3(0.299, 0.587, 0.114));
+    behind = mix(vec3(l), behind, 0.55) * 0.45;
+    float scan = step(0.5, fract(FRAGCOORD.y * 0.5)) * 0.012;
+    COLOR = vec4(mix(behind, c.rgb, c.a) + vec3(0.3, 0.8, 1.0) * scan, clamp(c.a / bg_alpha, 0.0, 1.0));
+}
+" } };
+
+    public static StyleBoxFlat GlassBox(Color border, float alpha = 0.6f, int margin = 16)
+    {
+        var sb = Box(new Color(0.04f, 0.015f, 0.1f, alpha), new Color(border, 0.42f), 1, 7, margin);
+        sb.BorderWidthTop = 2;
         return sb;
     }
 
@@ -38,9 +85,6 @@ public static class UiTheme
             if (_theme != null) return _theme;
             var t = new Theme { DefaultFont = Font, DefaultFontSize = 24 };
             t.SetColor("font_color", "Label", Text);
-            // Dark outline keeps text readable over the bright neon world.
-            t.SetConstant("outline_size", "Label", 3);
-            t.SetColor("font_outline_color", "Label", new Color(0, 0, 0.02f, 0.85f));
 
             var normal = Box(new Color(0.03f, 0.02f, 0.1f, 0.85f), new Color(Cyan, 0.55f), 2, 6, 12);
             var hover = Box(new Color(0.06f, 0.05f, 0.18f, 0.92f), Cyan, 2, 6, 12);
@@ -70,7 +114,7 @@ public static class UiTheme
             t.SetColor("font_color", "LineEdit", Text);
             t.SetColor("caret_color", "LineEdit", Magenta);
 
-            t.SetStylebox("panel", "PanelContainer", Box(PanelBg, new Color(Cyan, 0.35f), 1, 8, 16));
+            t.SetStylebox("panel", "PanelContainer", GlassBox(Cyan));
             t.SetStylebox("panel", "PopupMenu", Box(new Color(0.03f, 0.02f, 0.1f, 0.97f), Cyan, 1, 4, 8));
             t.SetStylebox("hover", "PopupMenu", Box(new Color(0.25f, 0.04f, 0.25f, 0.95f), Magenta, 0, 2, 4));
             t.SetColor("font_color", "PopupMenu", Text);
@@ -108,11 +152,20 @@ public static class UiTheme
         return b;
     }
 
-    public static PanelContainer Panel(Color? border = null, float alpha = 0.74f, int margin = 16)
+    /// <summary>Frosted glass panel. Every panel shares the cyan accent; <paramref name="alert"/> switches it to magenta.</summary>
+    public static PanelContainer Panel(float alpha = 0.6f, int margin = 16, bool alert = false)
     {
-        var p = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        p.AddThemeStyleboxOverride("panel", Box(new Color(PanelBg, alpha), new Color(border ?? Cyan, 0.45f), 1, 8, margin));
+        var p = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Material = GlassMaterial };
+        p.AddThemeStyleboxOverride("panel", GlassBox(alert ? Magenta : Cyan, alpha, margin));
         return p;
+    }
+
+    /// <summary>Small letter-spaced caption above a value.</summary>
+    public static Label CaptionLabel(string text, int size = 16, HorizontalAlignment align = HorizontalAlignment.Left)
+    {
+        var l = Label(text, size, CaptionColor, align);
+        l.AddThemeFontOverride("font", Caption);
+        return l;
     }
 
     public static VBoxContainer VBox(int sep = 10)
@@ -136,15 +189,14 @@ public static class UiTheme
         return s;
     }
 
-    /// <summary>Heavy outline + shadow for text floating directly over the 3D scene.</summary>
-    public static T Overlay<T>(T l, int outline = 12) where T : Label
+    /// <summary>Text floating directly over the 3D scene: a soft halo in its own colour instead of a black outline.</summary>
+    public static T Overlay<T>(T l, int glow = 12) where T : Label
     {
-        l.AddThemeConstantOverride("outline_size", outline);
-        l.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0.02f, 0.92f));
-        l.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.6f));
-        l.AddThemeConstantOverride("shadow_offset_x", 3);
-        l.AddThemeConstantOverride("shadow_offset_y", 4);
-        l.AddThemeConstantOverride("shadow_outline_size", outline + 4);
+        var c = l.HasThemeColorOverride("font_color") ? l.GetThemeColor("font_color") : Text;
+        l.AddThemeColorOverride("font_shadow_color", new Color(c, 0.22f));
+        l.AddThemeConstantOverride("shadow_offset_x", 0);
+        l.AddThemeConstantOverride("shadow_offset_y", 0);
+        l.AddThemeConstantOverride("shadow_outline_size", glow);
         return l;
     }
 

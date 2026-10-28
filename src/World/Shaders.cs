@@ -487,4 +487,31 @@ void fragment() {
     COLOR = vec4(col, 1.0);
 }
 ");
+
+    /// <summary>Glass signboard: dark tinted panel, glowing chamfered frame, scanlines, light sweep.</summary>
+    public static readonly Shader HoloPanel = Make(@"
+shader_type spatial;
+render_mode unshaded, cull_disabled, shadows_disabled;
+uniform vec3 accent : source_color = vec3(0.1, 0.9, 1.0);
+uniform vec2 size = vec2(8.0, 3.0);
+uniform float cut = 0.55;
+void fragment() {
+    vec2 p = vec2(UV.x, 1.0 - UV.y) * size;
+    float tl = p.x + (size.y - p.y);
+    float br = (size.x - p.x) + p.y;
+    if (tl < cut || br < cut) discard;
+    float d = min(min(p.x, size.x - p.x), min(p.y, size.y - p.y));
+    d = min(d, min(tl - cut, br - cut) * 0.7071);
+    float fw = fwidth(p.x) * 1.2;
+    float frame = 1.0 - smoothstep(0.04, 0.04 + fw, d);
+    float inner = (1.0 - smoothstep(0.012, 0.012 + fw, abs(d - 0.14))) * 0.35;
+    float scan = 0.5 + 0.5 * sin(p.y * 55.0 - TIME * 2.5);
+    float x = (p.x + p.y * 0.6) / (size.x + size.y * 0.6);
+    float sweep = exp(-pow((x - fract(TIME * 0.11) * 1.8 + 0.4) * 9.0, 2.0));
+    vec3 body = vec3(0.02, 0.008, 0.05) + accent * (0.035 + 0.04 * p.y / size.y);
+    body += accent * (scan * 0.018 + sweep * 0.07);
+    ALBEDO = mix(body, accent * 2.6, max(frame, inner));
+    ALPHA = mix(0.82, 1.0, frame);
+}
+");
 }

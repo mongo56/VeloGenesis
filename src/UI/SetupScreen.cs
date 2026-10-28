@@ -29,7 +29,7 @@ public partial class SetupScreen : Screen
         var s = Settings.Current;
         _mode = s.LastMode == "Erg" ? RideMode.Erg : RideMode.FreeRide;
 
-        var panel = UiTheme.Anchor(UiTheme.Panel(UiTheme.Cyan, 0.88f, 30), 0.5f, 0.5f, -720, 0, 1440, 0);
+        var panel = UiTheme.Anchor(UiTheme.Panel(0.88f, 30), 0.5f, 0.5f, -720, 0, 1440, 0);
         AddChild(panel);
         var v = UiTheme.VBox(12);
         panel.AddChild(v);

@@ -19,6 +19,7 @@ public partial class Hud : Control
     WorkoutGraph _workout;
     Minimap _map;
     Label _status, _toast, _bannerTop, _bannerName, _hint;
+    PanelContainer _banner, _toastPanel, _footer;
     float _toastT, _bannerT;
 
     PanelContainer _forkPanel;
@@ -39,6 +40,7 @@ public partial class Hud : Control
     {
         _status.Visible = !clean;
         _hint.Visible = !clean;
+        _footer.Visible = !clean;
     }
 
     public Hud() { }
@@ -52,13 +54,16 @@ public partial class Hud : Control
         Theme = UiTheme.Theme;
 
         // Power / cadence / HR
-        var left = UiTheme.Anchor(UiTheme.Panel(), 0, 0, 24, 24, 340, 0);
-        AddChild(left);
+        // Left column: power panel with the slipstream meter stacked below it.
+        var column = UiTheme.Anchor(UiTheme.VBox(14), 0, 0, 24, 24, 340, 0);
+        AddChild(column);
+        var left = UiTheme.Panel();
+        column.AddChild(left);
         var lv = UiTheme.VBox(2);
         left.AddChild(lv);
-        lv.AddChild(UiTheme.Label("POWER", 18, UiTheme.Dim));
+        lv.AddChild(UiTheme.CaptionLabel("POWER"));
         var prow = UiTheme.HBox(8);
-        _power = UiTheme.Label("0", 104, UiTheme.Text, bold: true);
+        _power = UiTheme.Label("0", 96, UiTheme.Text, bold: true);
         prow.AddChild(_power);
         var wl = UiTheme.Label("W", 34, UiTheme.Dim);
         wl.VerticalAlignment = VerticalAlignment.Bottom;
@@ -80,16 +85,16 @@ public partial class Hud : Control
         lv.AddChild(crow);
 
         // Slipstream power-up meter
-        var slip = UiTheme.Anchor(UiTheme.Panel(UiTheme.Amber), 0, 0, 24, 330, 340, 0);
-        AddChild(slip);
+        var slip = UiTheme.Panel();
+        column.AddChild(slip);
         slip.Visible = _ride.Config.PowerGels;
 
         // Ghost race panel (under the minimap)
-        _racePanel = UiTheme.Anchor(UiTheme.Panel(new Color(0.55f, 0.95f, 1f), 0.8f), 1, 0, -390, 320, 366, 0);
+        _racePanel = UiTheme.Anchor(UiTheme.Panel(), 1, 0, -390, 320, 366, 0);
         AddChild(_racePanel);
         var rv = UiTheme.VBox(2);
         _racePanel.AddChild(rv);
-        _raceTitle = UiTheme.Label("", 18, UiTheme.Dim);
+        _raceTitle = UiTheme.CaptionLabel("");
         rv.AddChild(_raceTitle);
         _raceGap = UiTheme.Label("", 48, UiTheme.Text, bold: true);
         rv.AddChild(_raceGap);
@@ -103,7 +108,7 @@ public partial class Hud : Control
         var sv = UiTheme.VBox(4);
         slip.AddChild(sv);
         var srow = UiTheme.HBox(12);
-        srow.AddChild(UiTheme.Label("SLIPSTREAM", 18, UiTheme.Dim));
+        srow.AddChild(UiTheme.CaptionLabel("SLIPSTREAM"));
         _slipHint = UiTheme.Label("", 16, UiTheme.Dim);
         _slipHint.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _slipHint.HorizontalAlignment = HorizontalAlignment.Right;
@@ -133,25 +138,25 @@ public partial class Hud : Control
         AddChild(_map);
 
         // Gear (free ride)
-        var gp = UiTheme.Anchor(UiTheme.Panel(UiTheme.Magenta), 1, 0.5f, -330, 0, 306, 0);
+        var gp = UiTheme.Anchor(UiTheme.Panel(), 1, 0.5f, -330, 0, 306, 0);
         _gearPanel = gp;
         AddChild(gp);
         var gv = UiTheme.VBox(2);
         gp.AddChild(gv);
-        gv.AddChild(UiTheme.Label("GEAR", 18, UiTheme.Dim));
-        _gearBig = UiTheme.Label("", 64, UiTheme.Magenta, bold: true);
+        gv.AddChild(UiTheme.CaptionLabel("GEAR"));
+        _gearBig = UiTheme.Label("", 64, UiTheme.Text, bold: true);
         gv.AddChild(_gearBig);
         _gearSub = UiTheme.Label("", 18, UiTheme.Dim);
         gv.AddChild(_gearSub);
 
         // ERG
-        var ep = UiTheme.Anchor(UiTheme.Panel(UiTheme.Amber), 1, 0.5f, -390, 0, 366, 0);
+        var ep = UiTheme.Anchor(UiTheme.Panel(), 1, 0.5f, -390, 0, 366, 0);
         _ergPanel = ep;
         AddChild(ep);
         var ev = UiTheme.VBox(2);
         ep.AddChild(ev);
-        ev.AddChild(UiTheme.Label("ERG TARGET", 18, UiTheme.Dim));
-        _ergTarget = UiTheme.Label("", 64, UiTheme.Amber, bold: true);
+        ev.AddChild(UiTheme.CaptionLabel("ERG TARGET"));
+        _ergTarget = UiTheme.Label("", 64, UiTheme.Text, bold: true);
         ev.AddChild(_ergTarget);
         _ergInterval = UiTheme.Label("", 22, UiTheme.Text);
         ev.AddChild(_ergInterval);
@@ -165,7 +170,7 @@ public partial class Hud : Control
         AddChild(gradePanel);
         var grv = UiTheme.VBox(0);
         gradePanel.AddChild(grv);
-        grv.AddChild(UiTheme.Label("GRADE", 18, UiTheme.Dim));
+        grv.AddChild(UiTheme.CaptionLabel("GRADE"));
         _grade = UiTheme.Label("0.0%", 60, UiTheme.Text, bold: true);
         grv.AddChild(_grade);
         _gradeSub = UiTheme.Label("", 16, UiTheme.Dim);
@@ -177,7 +182,7 @@ public partial class Hud : Control
         AddChild(_workout);
 
         // Fork chooser
-        _forkPanel = UiTheme.Anchor(UiTheme.Panel(UiTheme.Magenta, 0.8f), 0.5f, 0, -460, 170, 920, 0);
+        _forkPanel = UiTheme.Anchor(UiTheme.Panel(0.7f, alert: true), 0.5f, 0, -460, 170, 920, 0);
         AddChild(_forkPanel);
         var fv = UiTheme.VBox(8);
         _forkPanel.AddChild(fv);
@@ -206,23 +211,42 @@ public partial class Hud : Control
         _forkHelp = UiTheme.Label("", 17, UiTheme.Dim, HorizontalAlignment.Center);
         fv.AddChild(_forkHelp);
 
-        _bannerTop = UiTheme.Anchor(UiTheme.Overlay(UiTheme.Label("", 24, UiTheme.Text, HorizontalAlignment.Center), 8), 0.5f, 0.3f, -600, -40, 1200, 30);
-        _bannerName = UiTheme.Anchor(UiTheme.Overlay(UiTheme.Label("", 64, UiTheme.Text, HorizontalAlignment.Center, true), 16), 0.5f, 0.3f, -600, -6, 1200, 80);
-        AddChild(_bannerTop);
-        AddChild(_bannerName);
-        _toast = UiTheme.Anchor(UiTheme.Overlay(UiTheme.Label("", 32, UiTheme.Amber, HorizontalAlignment.Center, true), 12), 0.5f, 0.42f, -600, 0, 1200, 40);
-        AddChild(_toast);
+        _banner = UiTheme.Anchor(UiTheme.Panel(0.65f, 22), 0.5f, 0.3f, 0, -50, 0, 0);
+        var bv = UiTheme.VBox(0);
+        _banner.AddChild(bv);
+        _bannerTop = UiTheme.CaptionLabel("", 22, HorizontalAlignment.Center);
+        _bannerName = UiTheme.Label("", 60, UiTheme.Text, HorizontalAlignment.Center, true);
+        _bannerName.CustomMinimumSize = new Vector2(520, 0);
+        bv.AddChild(_bannerTop);
+        bv.AddChild(_bannerName);
+        AddChild(_banner);
+        _toastPanel = UiTheme.Anchor(UiTheme.Panel(0.7f, 12), 0.5f, 0.42f, 0, 0, 0, 0);
+        _toast = UiTheme.Label("", 30, UiTheme.Amber, HorizontalAlignment.Center, true);
+        _toastPanel.AddChild(_toast);
+        AddChild(_toastPanel);
 
-        _status = UiTheme.Anchor(UiTheme.Label("", 16, UiTheme.Dim), 0, 1, 24, -34, 900, 24);
+        // Footer strip for device status and key hints, so they never sit on the busy scene.
+        var footer = UiTheme.Anchor(new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Material = UiTheme.GlassMaterial }, 0, 1, 0, -38, 0, 38);
+        footer.AnchorRight = 1;
+        footer.OffsetRight = 0;
+        var fsb = UiTheme.GlassBox(UiTheme.Cyan, 0.55f, 0);
+        fsb.SetBorderWidthAll(0);
+        fsb.BorderWidthTop = 1;
+        fsb.CornerRadiusTopLeft = fsb.CornerRadiusBottomRight = 0;
+        footer.AddThemeStyleboxOverride("panel", fsb);
+        _footer = footer;
+        AddChild(footer);
+
+        _status = UiTheme.Anchor(UiTheme.Label("", 16, UiTheme.Dim), 0, 1, 24, -31, 1100, 24);
         AddChild(_status);
-        _hint = UiTheme.Anchor(UiTheme.Label("", 16, new Color(UiTheme.Dim, 0.8f), HorizontalAlignment.Right), 1, 1, -924, -34, 900, 24);
+        _hint = UiTheme.Anchor(UiTheme.Label("", 16, new Color(UiTheme.Dim, 0.8f), HorizontalAlignment.Right), 1, 1, -924, -31, 900, 24);
         AddChild(_hint);
     }
 
     static Control Stat(string caption, out Label value, int size)
     {
         var v = UiTheme.VBox(0);
-        v.AddChild(UiTheme.Label(caption, 16, UiTheme.Dim));
+        v.AddChild(UiTheme.CaptionLabel(caption));
         value = UiTheme.Label("0", size, UiTheme.Text, bold: true);
         v.AddChild(value);
         return v;
@@ -322,10 +346,12 @@ public partial class Hud : Control
         UpdateRace();
 
         _toastT -= dt;
-        _toast.Modulate = new Color(1, 1, 1, Math.Clamp(_toastT, 0, 1));
+        _toastPanel.Modulate = new Color(1, 1, 1, Math.Clamp(_toastT, 0, 1));
+        _toastPanel.Visible = _toastT > 0;
         _bannerT -= dt;
         float ba = Math.Clamp(_bannerT, 0, 1);
-        _bannerTop.Modulate = _bannerName.Modulate = new Color(1, 1, 1, ba);
+        _banner.Modulate = new Color(1, 1, 1, ba);
+        _banner.Visible = ba > 0;
 
         var tr = DeviceManager.Trainer;
         string hrName = DeviceManager.Hr != null ? $"{DeviceManager.Hr.Name} ({DeviceManager.Hr.State})" : "none";
@@ -403,7 +429,7 @@ public partial class Hud : Control
             _forkName[i].Text = k.Name.ToUpper();
             _forkName[i].AddThemeColorOverride("font_color", sel ? k.Primary.Lightened(0.2f) : new Color(UiTheme.Dim, 0.8f));
             _forkStats[i].Text = $"{k.Length / 1000f:0.0} km   ·   +{k.Gain:0} m / -{k.Drop:0} m   ·   max {k.MaxGrade:0}%";
-            _forkOpt[i].AddThemeStyleboxOverride("panel", UiTheme.Box(new Color(0.03f, 0.02f, 0.1f, sel ? 0.95f : 0.5f), sel ? k.Primary : new Color(UiTheme.Dim, 0.25f), sel ? 3 : 1, 6, 10));
+            _forkOpt[i].AddThemeStyleboxOverride("panel", UiTheme.Box(sel ? new Color(k.Primary.Darkened(0.75f), 0.75f) : new Color(0.03f, 0.02f, 0.1f, 0.45f), sel ? k.Primary : new Color(UiTheme.Dim, 0.25f), sel ? 2 : 1, 6, 10));
         }
         if (_lastSel >= 0 && _lastSel != d.Selection) r.Music.Synth.SfxForkSelect();
         _lastSel = d.Selection;

@@ -17,7 +17,7 @@ public partial class StravaScreen : Screen
     protected override void Build()
     {
         Dim = 0.5f;
-        var panel = UiTheme.Anchor(UiTheme.Panel(UiTheme.Amber, 0.9f, 30), 0.5f, 0.5f, -680, 0, 1360, 0);
+        var panel = UiTheme.Anchor(UiTheme.Panel(0.9f, 30), 0.5f, 0.5f, -680, 0, 1360, 0);
         AddChild(panel);
         var v = UiTheme.VBox(12);
         panel.AddChild(v);
