@@ -156,8 +156,8 @@ public partial class WorldRoot : Node3D
             BackgroundMode = Godot.Environment.BGMode.Sky,
             Sky = sky,
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
-            AmbientLightColor = new Color(0.25f, 0.12f, 0.4f),
-            AmbientLightEnergy = 0.35f,
+            AmbientLightColor = new Color(0.3f, 0.14f, 0.45f),
+            AmbientLightEnergy = 0.45f,
             ReflectedLightSource = Godot.Environment.ReflectionSource.Sky,
             TonemapMode = Godot.Environment.ToneMapper.Aces,
             TonemapExposure = 1.0f,
@@ -165,7 +165,7 @@ public partial class WorldRoot : Node3D
             GlowEnabled = true,
             GlowIntensity = 0.55f,
             GlowStrength = 1.0f,
-            GlowBloom = 0f,
+            GlowBloom = 0.03f,
             GlowHdrThreshold = 1.0f,
             GlowBlendMode = Godot.Environment.GlowBlendModeEnum.Screen,
             FogEnabled = true,
@@ -173,21 +173,49 @@ public partial class WorldRoot : Node3D
             FogLightEnergy = 1f,
             FogDensity = Quality.FogDensity,
             FogSkyAffect = 0f,
+            // Low-lying mist in the valleys below the road (height follows the rider).
+            FogHeightDensity = 0.015f,
             SsrEnabled = Quality.Ssr,
+            SsrMaxSteps = 96,
+            SsrFadeIn = 0.1f,
+            SsrFadeOut = 1.5f,
+            SsrDepthTolerance = 0.4f,
             AdjustmentEnabled = true,
             AdjustmentSaturation = 1.15f,
             AdjustmentContrast = 1.05f,
         };
+        if (Quality.VolumetricFog)
+        {
+            // Thin haze that the sun scatters through (shafts past the ridges) and the
+            // pylon lights glow in.
+            _env.VolumetricFogEnabled = true;
+            _env.VolumetricFogDensity = 0.0012f;
+            _env.VolumetricFogAlbedo = new Color(0.6f, 0.35f, 0.7f);
+            _env.VolumetricFogEmission = new Color(0.008f, 0.001f, 0.016f);
+            _env.VolumetricFogEmissionEnergy = 1f;
+            _env.VolumetricFogAnisotropy = 0.5f;
+            _env.VolumetricFogLength = 260f;
+            _env.VolumetricFogDetailSpread = 2f;
+            _env.VolumetricFogSkyAffect = 0f;
+            _env.VolumetricFogAmbientInject = 0.05f;
+            _env.VolumetricFogTemporalReprojectionEnabled = true;
+        }
         float[] levels = { 0.9f, 1f, 0.75f, 0.5f, 0.3f, 0.18f, 0.1f };
         for (int i = 0; i < 7; i++) _env.SetGlowLevel(i, i < Quality.GlowLevels ? levels[i] : 0f);
         AddChild(new WorldEnvironment { Environment = _env });
 
+        // Low warm sunset key light: rakes across the slopes facing the sun.
         _sun = new DirectionalLight3D
         {
-            LightColor = new Color(1f, 0.55f, 0.75f),
-            LightEnergy = 0.55f,
+            LightColor = new Color(1f, 0.5f, 0.5f),
+            LightEnergy = 0.9f,
+            // It shines from higher than the painted sky sun, so a full highlight would smear the
+            // whole road; the puddles reflect the real sun disc from the sky instead.
+            LightSpecular = 0.12f,
+            LightVolumetricFogEnergy = 0.7f,
             ShadowEnabled = Quality.Shadows,
-            DirectionalShadowMaxDistance = 140f,
+            ShadowBlur = 1.5f,
+            DirectionalShadowMaxDistance = 260f,
         };
         AddChild(_sun);
 
@@ -195,6 +223,7 @@ public partial class WorldRoot : Node3D
         horizonMat.SetShaderParameter("grid_size", 40f);
         horizonMat.SetShaderParameter("glow", 1.3f);
         horizonMat.SetShaderParameter("grid_color", new Color(0.6f, 0.15f, 0.9f));
+        horizonMat.SetShaderParameter("solid", 0f);
         _horizon = new MeshInstance3D
         {
             Mesh = new PlaneMesh { Size = new Vector2(9000, 9000) },
@@ -203,6 +232,18 @@ public partial class WorldRoot : Node3D
         };
         AddChild(_horizon);
         SetupSparks();
+
+        if (Quality.PostFx)
+        {
+            var post = new CanvasLayer { Layer = 0 };
+            post.AddChild(new ColorRect
+            {
+                Material = new ShaderMaterial { Shader = Shaders.PostFx },
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                AnchorRight = 1, AnchorBottom = 1,
+            });
+            AddChild(post);
+        }
     }
 
     void Attach(Segment seg, SegmentGeometry g)
@@ -227,6 +268,7 @@ public partial class WorldRoot : Node3D
         root.AddChild(new MeshInstance3D { Mesh = g.Terrain.ToMesh(), MaterialOverride = terrainMat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
 
         root.AddChild(MultiMeshNode(_pylonMesh, Meshes.Glow(seg.Primary, 2.2f), g.Pylons, null));
+        AddPylonLights(root, g.Pylons, seg.Primary);
 
         // Rock formations share the terrain grid material so they belong to the landscape.
         root.AddChild(MultiMeshNode(Meshes.Rock, terrainMat, g.Rocks.ConvertAll(c => c.xf), null));
@@ -260,6 +302,34 @@ public partial class WorldRoot : Node3D
 
         foreach (var (xf, km) in g.Gates) root.AddChild(MakeGate(xf, km, seg.Secondary));
     }
+
+    /// <summary>Real lights on some of the pylons so the neon spills onto the wet road and the rider.</summary>
+    void AddPylonLights(Node3D root, List<Transform3D> pylons, Color color)
+    {
+        if (Quality.PylonLightSpacing <= 0) return;
+        // Pylons come in left/right pairs every 40 m; light every Nth pair, alternating sides.
+        int step = Math.Max(1, (int)(Quality.PylonLightSpacing / 40f));
+        for (int pair = 0, k = 0; pair * 2 + 1 < pylons.Count; pair += step, k++)
+        {
+            var xf = pylons[pair * 2 + (k & 1)];
+            root.AddChild(PylonLight(xf.Origin + Vector3.Up * 1.0f, color));
+        }
+    }
+
+    static OmniLight3D PylonLight(Vector3 pos, Color color) => new()
+    {
+        Position = pos,
+        LightColor = color,
+        LightEnergy = 4f,
+        LightVolumetricFogEnergy = 0.6f,
+        LightSpecular = 1f,
+        OmniRange = 13f,
+        OmniAttenuation = 1.2f,
+        ShadowEnabled = false,
+        DistanceFadeEnabled = true,
+        DistanceFadeBegin = 200f,
+        DistanceFadeLength = 60f,
+    };
 
     void RemoveBlockers(Segment added)
     {
@@ -312,6 +382,13 @@ public partial class WorldRoot : Node3D
         foreach (int side in new[] { -1, 1 })
             gate.AddChild(new MeshInstance3D { Mesh = _beamMesh, MaterialOverride = mat, Position = new Vector3(side * half, height * 0.5f, 0), Scale = new Vector3(0.25f, height, 0.25f) });
         gate.AddChild(new MeshInstance3D { Mesh = _beamMesh, MaterialOverride = mat, Position = new Vector3(0, height, 0), Scale = new Vector3(half * 2 + 0.25f, 0.25f, 0.25f) });
+        if (Quality.PylonLightSpacing > 0)
+        {
+            var light = PylonLight(new Vector3(0, height - 0.8f, 0), color);
+            light.OmniRange = 16f;
+            light.LightEnergy = 3f;
+            gate.AddChild(light);
+        }
         gate.AddChild(new Label3D
         {
             Text = text,
@@ -447,6 +524,7 @@ public partial class WorldRoot : Node3D
         var lightDir = new Vector3(flat.X, 0.45f, flat.Z).Normalized();
         _sun.Basis = Basis.LookingAt(-lightDir, Vector3.Up);
         _horizon.GlobalPosition = new Vector3(Mathf.Snapped(RiderPosition.X, 40f), RiderPosition.Y - 70f, Mathf.Snapped(RiderPosition.Z, 40f));
+        _env.FogHeight = RiderPosition.Y - 6f;
         // Ringed planet hangs well away from the sun.
         var planetFlat = flat.Rotated(Vector3.Up, 2.1f);
         _skyMat.SetShaderParameter("planet_dir", new Vector3(planetFlat.X, 0.33f, planetFlat.Z));

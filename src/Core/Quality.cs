@@ -12,6 +12,11 @@ public class Quality
     public int GlowLevels;
     public bool Shadows;
     public bool Ssr;
+    public bool VolumetricFog;
+    /// <summary>Spacing in metres between real lights on the road-edge pylons (0 = none).</summary>
+    public float PylonLightSpacing;
+    /// <summary>Film grain / chromatic aberration / vignette pass.</summary>
+    public bool PostFx;
     /// <summary>Lateral terrain column offsets (metres from road centre) per side.</summary>
     public float[] TerrainColumns;
     /// <summary>Use every Nth path sample for terrain rows.</summary>
@@ -31,9 +36,9 @@ public class Quality
     public static Quality Get(string name) => name switch
     {
         "Low" => new Quality { Name = "Low", Msaa = Viewport.Msaa.Disabled, Fxaa = true, RenderScale = 0.7f, GlowLevels = 3, TerrainColumns = ColsLow, TerrainRowStep = 4, SceneryDensity = 0.3f, ViewAhead = 1600, FogDensity = 0.0019f, CameraFar = 1900 },
-        "Medium" => new Quality { Name = "Medium", Msaa = Viewport.Msaa.Msaa2X, RenderScale = 0.85f, GlowLevels = 4, TerrainColumns = ColsMed, TerrainRowStep = 3, SceneryDensity = 0.55f, ViewAhead = 2100, FogDensity = 0.0015f, CameraFar = 2400 },
-        "Ultra" => new Quality { Name = "Ultra", Msaa = Viewport.Msaa.Msaa4X, RenderScale = 1f, GlowLevels = 6, Shadows = true, Ssr = true, TerrainColumns = ColsUltra, TerrainRowStep = 2, SceneryDensity = 1f, ViewAhead = 3000, FogDensity = 0.0011f, CameraFar = 3400 },
-        _ => new Quality { Name = "High", Msaa = Viewport.Msaa.Msaa4X, RenderScale = 1f, GlowLevels = 5, TerrainColumns = ColsHigh, TerrainRowStep = 2, SceneryDensity = 0.8f, ViewAhead = 2600, FogDensity = 0.0013f, CameraFar = 3000 },
+        "Medium" => new Quality { Name = "Medium", Msaa = Viewport.Msaa.Msaa2X, RenderScale = 0.85f, GlowLevels = 4, TerrainColumns = ColsMed, TerrainRowStep = 3, SceneryDensity = 0.55f, ViewAhead = 2100, FogDensity = 0.0015f, CameraFar = 2400, PylonLightSpacing = 160, PostFx = true },
+        "Ultra" => new Quality { Name = "Ultra", Msaa = Viewport.Msaa.Msaa4X, RenderScale = 1f, GlowLevels = 6, Shadows = true, Ssr = true, VolumetricFog = true, PylonLightSpacing = 40, PostFx = true, TerrainColumns = ColsUltra, TerrainRowStep = 2, SceneryDensity = 1f, ViewAhead = 3000, FogDensity = 0.0011f, CameraFar = 3400 },
+        _ => new Quality { Name = "High", Msaa = Viewport.Msaa.Msaa4X, RenderScale = 1f, GlowLevels = 5, Shadows = true, Ssr = true, VolumetricFog = true, PylonLightSpacing = 80, PostFx = true, TerrainColumns = ColsHigh, TerrainRowStep = 2, SceneryDensity = 0.8f, ViewAhead = 2600, FogDensity = 0.0013f, CameraFar = 3000 },
     };
 
     /// <summary>Anti-aliasing modes offered in Settings ("Auto" picks one per quality preset).</summary>

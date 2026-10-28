@@ -16,8 +16,11 @@ uniform vec3 base_color : source_color = vec3(0.010, 0.004, 0.026);
 uniform float grid_size = 12.0;
 uniform float glow = 2.4;
 uniform float fade_dist = 1100.0;
+// 1 = shaded rock surface, 0 = plain dark base (the far horizon plane).
+uniform float solid = 1.0;
 varying vec3 wpos;
 varying vec3 wnorm;
+" + NoiseLib + @"
 
 void vertex() {
     wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -52,18 +55,44 @@ void fragment() {
     float fade = exp(-dist / fade_dist);
     float lines = max(minor * 0.5, major) * (1.0 - steep * 0.7) + contour * steep * 0.9;
     vec3 lc = mix(grid_color, accent_color, clamp(steep * 0.8, 0.0, 1.0));
-    ALBEDO = base_color;
-    ROUGHNESS = 0.8;
+
+    // Solid rock under the grid: dusky violet valleys rising to warmer, sun-catching strata on the
+    // high slopes, with noise so the faces don't read as flat polygons.
+    float n = vnoise(wpos.xz / 18.0) * 0.6 + vnoise(wpos.xz / 4.0) * 0.4;
+    float strata = 0.5 + 0.5 * sin(wpos.y / 3.2 + n * 3.0);
+    float high = smoothstep(30.0, 160.0, UV.x);
+    vec3 low_col = vec3(0.045, 0.02, 0.085);
+    vec3 high_col = mix(vec3(0.13, 0.045, 0.16), vec3(0.2, 0.07, 0.12), strata);
+    ALBEDO = mix(low_col, high_col, clamp(high * 0.7 + steep * 0.5, 0.0, 1.0)) * (0.75 + 0.5 * n) * solid
+           + base_color * (1.0 - solid);
+    ROUGHNESS = 0.85;
     SPECULAR = 0.3;
-    EMISSION = lc * lines * glow * (0.2 + 0.8 * fade);
+    // Faint violet sky-glow on silhouettes keeps far ridges separate from each other.
+    float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
+    EMISSION = lc * lines * glow * (0.2 + 0.8 * fade) + vec3(0.18, 0.04, 0.22) * rim * 0.35 * solid;
 }
 ");
+
+    // Value noise shared by the surface shaders.
+    const string NoiseLib = @"
+float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x), mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
+}
+";
 
     public static readonly Shader Road = Make(@"
 shader_type spatial;
 render_mode cull_disabled;
 uniform vec3 edge_color : source_color = vec3(0.1, 0.9, 1.0);
 uniform vec3 accent_color : source_color = vec3(1.0, 0.2, 0.8);
+varying vec3 wpos;
+" + NoiseLib + @"
+void vertex() {
+    wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
 
 // Anti-aliased stripe: never thinner than a pixel, dimmed instead so far-away lines don't alias.
 float band(float x, float center, float half_w) {
@@ -81,12 +110,34 @@ void fragment() {
     float dash = band(u, 0.5, 0.006) * step(0.45, fract(v / 9.0));
     float cross_line = band(fract(v / 4.0), 0.5, 0.012) * 0.12;
     float pulse = pow(fract(v / 70.0 - TIME * 0.6), 14.0);
-    ALBEDO = vec3(0.008, 0.008, 0.018);
-    METALLIC = 0.15;
-    ROUGHNESS = 0.6;
-    SPECULAR = 0.25;
-    EMISSION = edge_color * (edge * (1.5 + pulse * 4.0) + inner * 0.6 + cross_line)
-             + accent_color * dash * 1.1;
+
+    // Rain-wet asphalt: fine grain, plus mirror-smooth puddles that reflect the neon and the sun.
+    vec2 p = wpos.xz;
+    float dist = length(VERTEX);
+    float grain_fade = clamp(1.0 - dist / 60.0, 0.0, 1.0);
+    float grain = mix(0.5, vnoise(p * 7.0) * 0.6 + vnoise(p * 19.0) * 0.4, grain_fade);
+    float puddle = smoothstep(0.5, 0.64, vnoise(p * 0.11) * 0.65 + vnoise(p * 0.43) * 0.35);
+    float tyre = smoothstep(0.08, 0.0, abs(abs(u - 0.5) - 0.22)) * 0.35; // polished wheel tracks
+    float wet = max(puddle, tyre);
+    vec3 asphalt = vec3(0.016, 0.014, 0.026) * (0.6 + 0.8 * grain);
+    float paint = clamp(edge + inner + dash, 0.0, 1.0);
+    ALBEDO = mix(mix(asphalt, vec3(0.004, 0.003, 0.008), wet), vec3(0.5), paint * 0.3);
+    ROUGHNESS = mix(0.4 + grain * 0.22, 0.04, wet);
+    SPECULAR = 0.4;
+    METALLIC = 0.0;
+    // Dry asphalt only faintly mirrors the bright sunset sky; puddles get the full reflection.
+    AO = mix(0.18, 1.0, wet);
+    AO_LIGHT_AFFECT = 0.0;
+    // Coarse bumps break up reflections outside the puddles.
+    float e = 0.05;
+    float gx = vnoise((p + vec2(e, 0.0)) * 7.0) - vnoise(p * 7.0);
+    float gz = vnoise((p + vec2(0.0, e)) * 7.0) - vnoise(p * 7.0);
+    vec3 bump = (VIEW_MATRIX * vec4(gx, 0.0, gz, 0.0)).xyz;
+    NORMAL = normalize(NORMAL - bump * 0.35 * (1.0 - wet) * grain_fade);
+    // Neon spill from the edge tubes onto the asphalt, brighter where it's wet.
+    float spill = exp(-d * 16.0) * (0.06 + 0.16 * wet) * (1.0 + pulse * 2.0);
+    EMISSION = edge_color * (edge * (1.5 + pulse * 4.0) + inner * 0.6 + cross_line + spill)
+             + accent_color * (dash * 1.1 + exp(-abs(u - 0.5) * 40.0) * step(0.45, fract(v / 9.0)) * 0.05 * wet);
 }
 ");
 
@@ -200,7 +251,7 @@ uniform float sun_size = 0.17;
 uniform vec3 planet_dir = vec3(0.7, 0.35, 0.6);
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-
+" + NoiseLib + @"
 void sky() {
     vec3 d = EYEDIR;
     float h = d.y;
@@ -257,12 +308,49 @@ void sky() {
     }
     if (ringFront) col += vec3(0.95, 0.5, 1.0) * ring * 0.9;
 
-    // Striped synthwave cloud bands low on the horizon.
     float az = atan(d.x, d.z);
-    float cl = 0.5 + 0.5 * sin(az * 5.0 + TIME * 0.02) * sin(az * 11.0 - 1.3 + TIME * 0.013);
-    float band = smoothstep(0.025, 0.07, h) * smoothstep(0.24, 0.11, h);
-    float stripes = smoothstep(0.35, 0.95, sin(h * 130.0 + cl * 5.0) * 0.5 + 0.5);
-    col = mix(col, vec3(0.22, 0.02, 0.24) * 1.4 + sun_bottom * 0.25 * exp(-ang * 3.0), band * stripes * cl * 0.6);
+
+    // Soft halo around the sun.
+    col += sun_top * 0.12 * exp(-ang * 14.0) + sun_bottom * 0.08 * exp(-ang * 2.2);
+
+    // Long streaky sunset clouds on a curved layer: bright gold-pink undersides near the sun,
+    // fading to dark violet away from it. They pass in front of the sun.
+    if (h > 0.0) {
+        vec2 cp = d.xz / (h + 0.12);
+        cp = vec2(cp.x * 0.35, cp.y * 1.6) + vec2(TIME * 0.004, 0.0);
+        float c = vnoise(cp * 1.3) * 0.55 + vnoise(cp * 3.1) * 0.3 + vnoise(cp * 7.9) * 0.15;
+        float cover = smoothstep(0.52, 0.75, c) * smoothstep(0.015, 0.06, h) * smoothstep(0.42, 0.14, h);
+        float sun_lit = exp(-ang * 2.4);
+        vec3 cloud = mix(vec3(0.07, 0.01, 0.12), sun_bottom * 1.1 + sun_top * 0.35, sun_lit);
+        cloud += sun_top * pow(sun_lit, 3.0) * smoothstep(0.6, 0.85, c) * 1.6; // silver lining
+        col = mix(col, cloud, cover * 0.85);
+    }
+
+    // Distant megacity skyline under the sun, with lit windows.
+    float sun_az = atan(sd.x, sd.z);
+    float ra = mod(az - sun_az + 3.14159, 6.28318) - 3.14159;
+    float city = smoothstep(1.25, 0.5, abs(ra));
+    if (city > 0.0 && h < 0.06 && h > -0.02) {
+        float bx = ra * 70.0;
+        float b1 = (0.004 + pow(hash(vec2(floor(bx), 3.0)), 2.2) * 0.03) * city;
+        float bx2 = ra * 140.0 + 0.37;
+        float b2 = (0.002 + pow(hash(vec2(floor(bx2), 9.0)), 3.0) * 0.045) * city;
+        // Thin antenna on a few of the tallest blocks.
+        float spire = step(0.93, hash(vec2(floor(bx2), 5.0))) * step(abs(fract(bx2) - 0.5), 0.04) * 0.02 * city;
+        float top = max(max(b1, b2), b2 + spire);
+        if (h < top) {
+            float front = step(b1, b2);
+            float wx = front > 0.5 ? bx2 * 6.0 : bx * 6.0;
+            vec2 wc = vec2(floor(wx), floor(h * 900.0));
+            float win = step(0.25, fract(wx)) * step(fract(h * 900.0), 0.55) * step(0.78, hash(wc));
+            vec3 wcol = mix(vec3(1.0, 0.25, 0.8), vec3(0.3, 0.9, 1.0), step(0.5, hash(wc + 13.0)));
+            wcol = mix(wcol, vec3(1.0, 0.7, 0.3), step(0.85, hash(wc + 29.0)));
+            vec3 body = mix(vec3(0.03, 0.005, 0.06), vec3(0.06, 0.01, 0.09), front);
+            float edge_lit = smoothstep(top - 0.0015, top, h);
+            col = body + wcol * win * 1.6 + sun_bottom * edge_lit * 0.6;
+            if (spire > 0.0 && h > b2) col += vec3(1.0, 0.2, 0.3) * step(top - 0.002, h) * (0.6 + 0.4 * sin(TIME * 4.0)) * 3.0;
+        }
+    }
 
     // Occasional shooting star.
     float period = 6.5;
@@ -375,6 +463,28 @@ void fragment() {
     float fade = pow(1.0 - clamp(ly, 0.0, 1.0), 1.6);
     float pulse = 0.75 + 0.25 * sin(TIME * 2.0 - ly * 12.0);
     ALBEDO = icolor * side * fade * pulse * 0.9;
+}
+");
+
+    /// <summary>Full-screen finishing pass over the 3D view: film grain, edge chromatic aberration, vignette.</summary>
+    public static readonly Shader PostFx = Make(@"
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float grain = 0.028;
+uniform float aberration = 0.0035;
+uniform float vignette = 0.42;
+void fragment() {
+    vec2 uv = SCREEN_UV;
+    vec2 c = uv - 0.5;
+    float r2 = dot(c, c);
+    vec2 off = c * aberration * r2 * 4.0;
+    vec3 col = vec3(texture(screen_tex, uv + off).r, texture(screen_tex, uv).g, texture(screen_tex, uv - off).b);
+    float n = fract(sin(dot(FRAGCOORD.xy + fract(TIME * 7.3) * vec2(173.0, 91.0), vec2(12.9898, 78.233))) * 43758.5453);
+    // Grain is strongest in the mid-tones, like film.
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    col += (n - 0.5) * grain * (0.4 + 1.2 * lum * (1.0 - lum));
+    col *= 1.0 - vignette * smoothstep(0.08, 0.5, r2);
+    COLOR = vec4(col, 1.0);
 }
 ");
 }
