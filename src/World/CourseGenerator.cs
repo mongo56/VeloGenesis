@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 using VeloGenesis.Ride;
 
@@ -13,6 +14,14 @@ public class CourseGenerator
     readonly RideConfig _cfg;
     readonly Random _rng;
     int _nextId;
+
+    /// <summary>Distance between biome changes (the next fork after this point enters a new one).</summary>
+    public const float BiomeLength = 7000f;
+    int _biome = DebugStartBiome;
+    /// <summary>Debug: biome the course starts in.</summary>
+    public static int DebugStartBiome;
+    float _biomeStart;
+    readonly System.Collections.Generic.List<int> _biomeQueue = new();
 
     public int WorldSeed { get; }
     public float BaseAltitude { get; private set; }
@@ -84,8 +93,16 @@ public class CourseGenerator
     }
 
     /// <summary>Creates the two branches leaving the end of <paramref name="parent"/>.</summary>
-    public Segment[] CreateFork(Segment parent, float gainSoFar)
+    /// <summary>Roads a new branch must keep clear of (set per fork; the generator runs one fork at a time).</summary>
+    List<RoadField> _avoid;
+
+    /// <summary>How far a branch must stay from any road that isn't the stretch it grows out of.</summary>
+    const float RoadClearance = 150f;
+
+    public Segment[] CreateFork(Segment parent, float gainSoFar, IReadOnlyList<Segment> avoid = null)
     {
+        _avoid = new List<RoadField>();
+        if (avoid != null) foreach (var s in avoid) _avoid.Add(new RoadField(s));
         float distAtFork = parent.StartDist + parent.Length;
         float rate = _cfg.GainPerMetre;
         float deficit = distAtFork * rate - gainSoFar; // > 0 means behind the plan
@@ -126,9 +143,18 @@ public class CourseGenerator
             easyGain = needed * 0.5f;
         }
 
+        bool newBiome = distAtFork - _biomeStart >= BiomeLength;
+        if (newBiome)
+        {
+            NextBiome();
+            _biomeStart = distAtFork;
+        }
+
         int hardSide = _rng.Next(2) == 0 ? -1 : 1;
         var hard = Build(parent, hardKind, len, hardGain, hardSide, hardKind == SectorKind.Rolling ? 1.15f : 1f);
+        _avoid.Add(new RoadField(hard));
         var easy = Build(parent, easyKind, R(1600f, 2600f), easyGain, -hardSide, 0.9f);
+        _avoid = null;
         hard.IsHarder = true;
 
         float hardNet = hard.Gain;
@@ -136,6 +162,8 @@ public class CourseGenerator
         bool planHard = MathF.Abs(hardNet - needed) < MathF.Abs(easyNet - needed);
         hard.IsPlan = planHard;
         easy.IsPlan = !planHard;
+        hard.EntersBiome = easy.EntersBiome = newBiome;
+        AssignFeatures(hard, easy);
 
         // Children are always ordered left (index 0), right (index 1).
         return hardSide < 0 ? new[] { hard, easy } : new[] { easy, hard };
@@ -143,6 +171,7 @@ public class CourseGenerator
 
     Segment Build(Segment parent, SectorKind kind, float length, float gainTarget, int side, float steepness)
     {
+        var biome = Biome.All[_biome];
         float grade = AvgGrade * steepness;
         if (kind == SectorKind.Climb) length = Math.Max(length, gainTarget / (grade / 100f) + 500f);
         length = Math.Min(length, 9000f);
@@ -159,35 +188,53 @@ public class CourseGenerator
             Heading = new float[n],
             Grade = new float[n],
             Curvature = new float[n],
+            BiomeIndex = _biome,
         };
 
         BuildGrades(seg.Grade, kind, gainTarget, grade);
 
         // Integrate the path. Curvature blends from the parent's so the road stays smooth.
-        Vector3 p = parent?.Pos[^1] ?? Vector3.Zero;
-        float h = parent?.Heading[^1] ?? 0f;
-        float k0 = parent?.Curvature[^1] ?? 0f;
-        int curveSeed = _rng.Next();
         float wiggle = kind switch { SectorKind.Climb => 1.15f, SectorKind.Flat => 0.6f, _ => 1f };
-        seg.Pos[0] = p;
-        seg.Heading[0] = h;
-        seg.Curvature[0] = k0;
-        for (int i = 1; i < n; i++)
+        void Lay(int curveSeed, float wiggleScale)
         {
-            float s = i * Segment.Ds;
-            float kNoise = Noise.Value1(s / 380f, curveSeed) * MaxCurvature * wiggle * 1.25f;
-            kNoise = Math.Clamp(kNoise, -MaxCurvature, MaxCurvature);
-            float k = Noise.Lerp(k0, kNoise, Noise.SmoothStep(0, 160, s));
-            k += side * ForkCurvature * (1f - Noise.SmoothStep(0, 340, s));
-            seg.Curvature[i] = k;
-            float hMid = h + k * Segment.Ds * 0.5f;
-            h += k * Segment.Ds;
-            var f = Segment.ForwardOf(hMid);
-            p += f * Segment.Ds;
-            p.Y += (seg.Grade[i - 1] + seg.Grade[i]) * 0.5f / 100f * Segment.Ds;
-            seg.Pos[i] = p;
-            seg.Heading[i] = h;
+            Vector3 p = parent?.Pos[^1] ?? Vector3.Zero;
+            float h = parent?.Heading[^1] ?? 0f;
+            float k0 = parent?.Curvature[^1] ?? 0f;
+            seg.Pos[0] = p;
+            seg.Heading[0] = h;
+            seg.Curvature[0] = k0;
+            for (int i = 1; i < n; i++)
+            {
+                float s = i * Segment.Ds;
+                float kNoise = Noise.Value1(s / 380f, curveSeed) * MaxCurvature * wiggle * wiggleScale * 1.25f;
+                kNoise = Math.Clamp(kNoise, -MaxCurvature, MaxCurvature);
+                float k = Noise.Lerp(k0, kNoise, Noise.SmoothStep(0, 160, s));
+                k += side * ForkCurvature * (1f - Noise.SmoothStep(0, 340, s));
+                seg.Curvature[i] = k;
+                float hMid = h + k * Segment.Ds * 0.5f;
+                h += k * Segment.Ds;
+                var f = Segment.ForwardOf(hMid);
+                p += f * Segment.Ds;
+                p.Y += (seg.Grade[i - 1] + seg.Grade[i]) * 0.5f / 100f * Segment.Ds;
+                seg.Pos[i] = p;
+                seg.Heading[i] = h;
+            }
         }
+
+        // Roads must never cross or run alongside one another (nor loop back on themselves): re-roll
+        // the bends, a little straighter each time, until the branch keeps its distance.
+        int bestSeed = _rng.Next();
+        float bestScale = 1f, bestClear = -1f;
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            int curveSeed = attempt == 0 ? bestSeed : _rng.Next();
+            float scale = MathF.Pow(0.8f, attempt);
+            Lay(curveSeed, scale);
+            float clear = Clearance(seg);
+            if (clear > bestClear) { bestClear = clear; bestSeed = curveSeed; bestScale = scale; }
+            if (clear >= RoadClearance) break;
+        }
+        Lay(bestSeed, bestScale);
 
         for (int i = 1; i < n; i++)
         {
@@ -203,17 +250,117 @@ public class CourseGenerator
             SectorKind.Descent => R(0.8f, 1.1f),
             SectorKind.Start => 0.7f,
             _ => R(0.8f, 1.2f),
-        };
+        } * (kind == SectorKind.Start ? 1f : biome.Mountains);
         seg.Name = MakeName(kind);
-        (seg.Primary, seg.Secondary) = Palette(kind);
+        var palettes = biome.Palettes(kind);
+        (seg.Primary, seg.Secondary) = palettes[_rng.Next(palettes.Length)];
 
         int gelCount = kind switch { SectorKind.Climb => _rng.Next(6, 10), SectorKind.Rolling => _rng.Next(4, 7), SectorKind.Start => 2, _ => _rng.Next(2, 4) };
-        if (!_cfg.PowerGels && _cfg.Mode == RideMode.FreeRide) gelCount = 0;
-        seg.Gels = new float[gelCount];
-        seg.GelTaken = new bool[gelCount];
-        for (int i = 0; i < gelCount; i++)
-            seg.Gels[i] = seg.Length * (i + 0.5f + R(-0.3f, 0.3f)) / gelCount;
+        PlaceGels(seg, gelCount);
         return seg;
+    }
+
+    /// <summary>Closest the new road comes to any road to avoid, or to itself further along.</summary>
+    float Clearance(Segment seg)
+    {
+        float best = float.MaxValue;
+        var self = new RoadField(seg);
+        var roads = _avoid == null ? new List<RoadField> { self } : new List<RoadField>(_avoid) { self };
+        var rels = roads.ConvertAll(r => new RoadField.Relation(seg, r.Seg));
+        for (int i = 0; i < seg.Count; i += 5)
+        {
+            var p = seg.Pos[i];
+            for (int j = 0; j < roads.Count; j++)
+                best = Math.Min(best, roads[j].Clearance(p.X, p.Z, rels[j], i * Segment.Ds));
+        }
+        return best;
+    }
+
+    void PlaceGels(Segment seg, int count)
+    {
+        if (!_cfg.PowerGels && _cfg.Mode == RideMode.FreeRide) count = 0;
+        seg.Gels = new float[count];
+        seg.GelTaken = new bool[count];
+        for (int i = 0; i < count; i++)
+            seg.Gels[i] = seg.Length * (i + 0.5f + R(-0.3f, 0.3f)) / count;
+    }
+
+    /// <summary>Moves on to a different biome, cycling through all of them in a shuffled order.</summary>
+    void NextBiome()
+    {
+        if (_biomeQueue.Count == 0)
+        {
+            for (int i = 0; i < Biome.All.Length; i++) if (i != _biome) _biomeQueue.Add(i);
+            for (int i = _biomeQueue.Count - 1; i > 0; i--)
+            {
+                int j = _rng.Next(i + 1);
+                (_biomeQueue[i], _biomeQueue[j]) = (_biomeQueue[j], _biomeQueue[i]);
+            }
+        }
+        _biome = _biomeQueue[0];
+        _biomeQueue.RemoveAt(0);
+    }
+
+    /// <summary>
+    /// Gives each branch something to ride for. The harder one tends to hold a ghost race or extra
+    /// gels, the easier one a draft pack; either can carry a cadence rhythm zone.
+    /// </summary>
+    void AssignFeatures(Segment hard, Segment easy)
+    {
+        bool free = _cfg.Mode == RideMode.FreeRide;
+        bool gels = _cfg.PowerGels || !free;
+        var hardOpts = new System.Collections.Generic.List<(SegmentFeature f, float w)> { (SegmentFeature.Rhythm, 1f) };
+        if (free && _cfg.GhostRaces) hardOpts.Add((SegmentFeature.Race, 2.2f));
+        if (gels) hardOpts.Add((SegmentFeature.Gels, 1f));
+        var easyOpts = new System.Collections.Generic.List<(SegmentFeature f, float w)>
+        {
+            (SegmentFeature.Pack, 2f), (SegmentFeature.Rhythm, 1f), (SegmentFeature.None, 0.5f),
+        };
+        hard.Feature = Weighted(hardOpts);
+        easy.Feature = Weighted(easyOpts);
+        if (hard.Feature == easy.Feature && hard.Feature == SegmentFeature.Rhythm) easy.Feature = SegmentFeature.Pack;
+
+        foreach (var seg in new[] { hard, easy })
+        {
+            if (seg.Feature == SegmentFeature.Gels) PlaceGels(seg, seg.Gels.Length * 2 + 2);
+            int zones = seg.Feature == SegmentFeature.Rhythm ? (seg.Length > 2200f ? 2 : 1)
+                : !free && seg.Feature != SegmentFeature.Pack && _rng.NextDouble() < 0.35 ? 1 : 0;
+            PlaceRhythm(seg, zones);
+        }
+    }
+
+    SegmentFeature Weighted(System.Collections.Generic.List<(SegmentFeature f, float w)> opts)
+    {
+        float total = 0;
+        foreach (var o in opts) total += o.w;
+        float x = R(0, total);
+        foreach (var o in opts)
+        {
+            if (x < o.w) return o.f;
+            x -= o.w;
+        }
+        return opts[^1].f;
+    }
+
+    void PlaceRhythm(Segment seg, int count)
+    {
+        float from = 160f, to = seg.Length - WorldRoot.ForkWindow - 120f;
+        var list = new System.Collections.Generic.List<RhythmZone>();
+        for (int k = 0; k < count; k++)
+        {
+            float len = R(420f, 620f);
+            float slot = (to - from) / count;
+            if (slot < len + 40f) break;
+            float start = from + slot * k + R(0, slot - len);
+            int[] rpms = seg.Kind switch
+            {
+                SectorKind.Climb => new[] { 75, 80, 85 },
+                SectorKind.Rolling => new[] { 85, 90, 95 },
+                _ => new[] { 90, 95, 100 },
+            };
+            list.Add(new RhythmZone { Start = start, Length = len, Rpm = rpms[_rng.Next(rpms.Length)] });
+        }
+        seg.Rhythm = list.ToArray();
     }
 
     /// <summary>Fills the grade profile (percent) for a segment so it starts and ends flat.</summary>
@@ -319,22 +466,5 @@ public class CourseGenerator
             _ => RollNouns,
         };
         return $"{Adjectives[_rng.Next(Adjectives.Length)]} {nouns[_rng.Next(nouns.Length)]}";
-    }
-
-    static readonly Color Cyan = new(0.1f, 0.9f, 1f), Magenta = new(1f, 0.15f, 0.8f), Orange = new(1f, 0.45f, 0.08f),
-        Red = new(1f, 0.12f, 0.3f), Amber = new(1f, 0.75f, 0.15f), Violet = new(0.6f, 0.3f, 1f), Lime = new(0.45f, 1f, 0.3f),
-        Teal = new(0.1f, 1f, 0.7f), Blue = new(0.25f, 0.45f, 1f), Pink = new(1f, 0.4f, 0.75f);
-
-    (Color, Color) Palette(SectorKind kind)
-    {
-        (Color, Color)[] options = kind switch
-        {
-            SectorKind.Climb => new[] { (Orange, Magenta), (Red, Amber), (Amber, Red) },
-            SectorKind.Descent => new[] { (Cyan, Blue), (Teal, Cyan), (Blue, Violet) },
-            SectorKind.Flat => new[] { (Lime, Cyan), (Teal, Violet) },
-            SectorKind.Start => new[] { (Cyan, Magenta) },
-            _ => new[] { (Magenta, Cyan), (Violet, Pink), (Pink, Cyan) },
-        };
-        return options[_rng.Next(options.Length)];
     }
 }

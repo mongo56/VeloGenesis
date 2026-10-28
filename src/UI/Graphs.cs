@@ -129,6 +129,54 @@ public partial class ZoneBar : Control
     }
 }
 
+/// <summary>
+/// Cadence meter for rhythm zones: a scale around the target with the ±window band, a needle at
+/// the current cadence and a beat light pulsing at the target cadence.
+/// </summary>
+public partial class RhythmGauge : Control
+{
+    public float Target = 90, Window = 5, Cadence;
+    public bool Locked;
+    const float Span = 22f;
+
+    public override void _Draw()
+    {
+        var size = Size;
+        var green = WorldRoot.RhythmColor;
+        float barY = size.Y * 0.32f, barH = size.Y * 0.36f;
+        float X(float rpm) => Math.Clamp((rpm - (Target - Span)) / (Span * 2f), 0f, 1f) * size.X;
+
+        DrawRect(new Rect2(0, barY, size.X, barH), new Color(0.02f, 0.01f, 0.07f, 0.7f));
+        float x0 = X(Target - Window), x1 = X(Target + Window);
+        DrawRect(new Rect2(x0, barY, x1 - x0, barH), new Color(green, Locked ? 0.55f : 0.25f));
+        DrawRect(new Rect2(x0, barY, x1 - x0, barH), green, false, 1.5f);
+        var font = UiTheme.Font;
+        for (float r = Target - 20; r <= Target + 20; r += 10)
+        {
+            float x = X(r);
+            DrawLine(new Vector2(x, barY + barH), new Vector2(x, barY + barH + 6), new Color(UiTheme.Dim, 0.7f), 1);
+            DrawString(font, new Vector2(x - 14, size.Y), $"{r:0}", HorizontalAlignment.Center, 28, 14, new Color(UiTheme.Dim, 0.8f));
+        }
+
+        // Needle: green when in the window, amber when off it (with an arrow towards the target).
+        bool inside = MathF.Abs(Cadence - Target) <= Window;
+        var nc = inside ? green : UiTheme.Amber;
+        float nx = X(Cadence);
+        DrawLine(new Vector2(nx, barY - 8), new Vector2(nx, barY + barH + 2), nc, 4);
+        DrawCircle(new Vector2(nx, barY - 10), 6, nc);
+        if (!inside && Cadence > 1)
+        {
+            string hint = Cadence < Target ? "SPIN FASTER  ▶" : "◀  SPIN SLOWER";
+            DrawString(font, new Vector2(0, barY - 4), hint, HorizontalAlignment.Center, size.X, 16, UiTheme.Amber);
+        }
+
+        // Beat light at the target cadence.
+        float beat = (float)(Time.GetTicksMsec() / 1000.0 * Target / 60.0 % 1.0);
+        float pulse = MathF.Exp(-beat * 6f);
+        DrawCircle(new Vector2(size.X - 10, barY - 12), 5 + 4 * pulse, new Color(green, 0.35f + 0.65f * pulse));
+    }
+}
+
 /// <summary>Horizontal bars of time spent in each power zone.</summary>
 public partial class ZoneChart : Control
 {

@@ -14,6 +14,8 @@ public class Settings
 
     public string Quality = "High"; // Low, Medium, High, Ultra
     public bool ShowFps = false;
+    /// <summary>Fade the secondary HUD panels during long uneventful stretches.</summary>
+    public bool SteadyHud = true;
     /// <summary>One of Quality.AaModes.</summary>
     public string AntiAliasing = "Auto";
 

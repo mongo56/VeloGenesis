@@ -33,10 +33,6 @@ public partial class RiderAvatar : Node3D
     static readonly Vector3 Chest = new(0, 1.33f, -0.17f);
     static readonly Vector3 HeadPos = new(0, 1.5f, -0.33f);
 
-    static readonly Color Skin = new(0.56f, 0.37f, 0.26f);
-    static readonly Color Tee = new(0.8f, 0.58f, 0.07f);
-    static readonly Color Shorts = new(0.03f, 0.03f, 0.035f);
-    static readonly Color White = new(0.86f, 0.87f, 0.89f);
 
     StandardMaterial3D _decalMat, _tailMat, _carbonMat, _steelMat, _spokeMat, _helmetMat, _lensMat, _shoeMat, _ventMat;
     ShaderMaterial _frameMat, _rubberMat, _tyreMat, _skinMat, _teeMat, _shortsMat, _torsoMat, _shinMat;
@@ -49,6 +45,11 @@ public partial class RiderAvatar : Node3D
         _upperArm = new MeshInstance3D[2], _forearm = new MeshInstance3D[2], _glove = new MeshInstance3D[2];
     float _crank, _time;
 
+    /// <summary>Build and kit; set before the avatar enters the tree (null = the player's look).</summary>
+    public RiderLook Look;
+    float _shoulderX = 0.165f;
+    MeshInstance3D _ponytail;
+
     static CylinderMesh _tube;
     static BoxMesh _box;
     static ArrayMesh _rimMesh, _rimDecal;
@@ -57,13 +58,15 @@ public partial class RiderAvatar : Node3D
     {
         _tube ??= new CylinderMesh { TopRadius = 1f, BottomRadius = 1f, Height = 1f, RadialSegments = 12, Rings = 1 };
         _box ??= new BoxMesh { Size = Vector3.One };
-        _rig = new Node3D();
+        var look = Look ?? new RiderLook();
+        _rig = new Node3D { Scale = Vector3.One * look.Size };
         AddChild(_rig);
+        if (look.Female) _shoulderX = 0.15f;
 
         // Bike: matte sage frame with a thin route-coloured pinstripe, black finishing kit,
         // deep carbon rims, tan-wall gravel tyres.
         _frameMat = new ShaderMaterial { Shader = Shaders.Paint };
-        _frameMat.SetShaderParameter("color", new Color(0.1f, 0.9f, 1f));
+        _frameMat.SetShaderParameter("color", look.Frame);
         _tailMat = Meshes.Glow(new Color(1f, 0.08f, 0.12f), 5f);
         _rubberMat = new ShaderMaterial { Shader = Shaders.Rim };
         _rubberMat.SetShaderParameter("rim_color", new Color(0.35f, 0.38f, 0.5f));
@@ -77,24 +80,24 @@ public partial class RiderAvatar : Node3D
 
         // Rider: white vented helmet, mirrored gold shades, loose yellow tee, black baggy shorts,
         // tall white socks and white shoes.
-        _skinMat = Kit(Skin, Skin, 100f, 0.55f, 0.55f);
-        _teeMat = Kit(Tee, Tee, 100f, 0.85f, 0.85f);
-        _shortsMat = Kit(Shorts, Shorts, 100f, 0.8f, 0.8f);
+        _skinMat = Kit(look.Skin, look.Skin, 100f, 0.55f, 0.55f);
+        _teeMat = Kit(look.Jersey, look.Jersey, 100f, 0.85f, 0.85f);
+        _shortsMat = Kit(look.Shorts, look.Shorts, 100f, 0.8f, 0.8f);
         // Torso: shorts waistband below the tee hem.
-        _torsoMat = Kit(Shorts, Tee, 0.06f, 0.8f, 0.85f);
+        _torsoMat = Kit(look.Shorts, look.Jersey, 0.06f, 0.8f, 0.85f);
         // Shin: skin from the knee, then the sock.
-        _shinMat = Kit(Skin, White, 0.2f, 0.55f, 0.75f);
-        _helmetMat = new StandardMaterial3D { AlbedoColor = White, Roughness = 0.28f, ClearcoatEnabled = true, Clearcoat = 0.8f };
+        _shinMat = Kit(look.Skin, look.Socks, 0.2f, 0.55f, 0.75f);
+        _helmetMat = new StandardMaterial3D { AlbedoColor = look.Helmet, Roughness = 0.28f, ClearcoatEnabled = true, Clearcoat = 0.8f };
         _ventMat = new StandardMaterial3D { AlbedoColor = new Color(0.02f, 0.02f, 0.025f), Roughness = 0.6f };
         _lensMat = new StandardMaterial3D
         {
             AlbedoColor = new Color(1f, 0.62f, 0.18f), Metallic = 1f, Roughness = 0.06f,
             EmissionEnabled = true, Emission = new Color(1f, 0.45f, 0.1f), EmissionEnergyMultiplier = 0.5f,
         };
-        _shoeMat = new StandardMaterial3D { AlbedoColor = White, Roughness = 0.45f };
+        _shoeMat = new StandardMaterial3D { AlbedoColor = look.Shoes, Roughness = 0.45f };
 
         BuildBike();
-        BuildRider();
+        BuildRider(look);
         AddFillLights();
         Pose(0);
     }
@@ -169,6 +172,26 @@ public partial class RiderAvatar : Node3D
         _frameMat.SetShaderParameter("color", primary);
         foreach (var m in new[] { _skinMat, _teeMat, _shortsMat, _torsoMat, _shinMat })
             m.SetShaderParameter("rim_color", secondary);
+    }
+
+    /// <summary>Changes the tee colour (AI riders wear their club's colour).</summary>
+    public void SetJersey(Color color)
+    {
+        _teeMat.SetShaderParameter("color_a", color);
+        _teeMat.SetShaderParameter("color_b", color);
+        _torsoMat.SetShaderParameter("color_b", color);
+    }
+
+    /// <summary>Bright rear light under the saddle so AI riders read from a long way back.</summary>
+    public void AddTailLight(Color color)
+    {
+        AddChild(new MeshInstance3D
+        {
+            Mesh = new BoxMesh { Size = new Vector3(0.06f, 0.09f, 0.04f) },
+            MaterialOverride = Meshes.Glow(color, 8f),
+            Position = SeatCluster + new Vector3(0, -0.1f, 0.07f),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        });
     }
 
     // ---------------------------------------------------------------- bike
@@ -260,15 +283,16 @@ public partial class RiderAvatar : Node3D
 
     // ---------------------------------------------------------------- rider
 
-    void BuildRider()
+    void BuildRider(RiderLook look)
     {
         // All body parts are smooth generated surfaces (see Meshes.Lathe / Limb) with kit details.
         _bodyMeshes ??= new BodyMeshes();
         var bm = _bodyMeshes;
 
         // Torso: one contoured shape from the seat to the base of the neck (hips → waist → chest →
-        // shoulders), cut a little loose for the tee. Local Y runs pelvis → chest.
-        _torso = Part(bm.Torso, _torsoMat);
+        // shoulders), cut a little loose for the tee. Local Y runs pelvis → chest. Women's: wider
+        // hips, a narrower waist and shoulders.
+        _torso = Part(look.Female ? bm.TorsoFemale : bm.Torso, _torsoMat);
         Child(_torso, new TorusMesh { InnerRadius = 0.07f, OuterRadius = 0.082f, Rings = 24, RingSegments = 6 }, _teeMat, new Vector3(0, 0.548f, 0), new Vector3(0.95f, 1, 0.8f)); // crew neck
 
         // Head group rides on the chest.
@@ -279,6 +303,19 @@ public partial class RiderAvatar : Node3D
         OrientFrom(neck, Chest + new Vector3(0, 0.05f, -0.03f), HeadPos + new Vector3(0, -0.07f, 0.03f));
         var headTilt = new Basis(Vector3.Right, 0.25f);
         _upper.AddChild(new MeshInstance3D { Mesh = bm.Head, MaterialOverride = _skinMat, Transform = new Transform3D(headTilt, HeadPos) });
+        if (look.Female)
+        {
+            // Ponytail out of the back of the helmet; it swings with the pedal strokes (see Pose).
+            var hairMat = new StandardMaterial3D { AlbedoColor = look.Hair, Roughness = 0.55f, Metallic = 0.1f };
+            _ponytail = new MeshInstance3D { Mesh = bm.Ponytail, MaterialOverride = hairMat };
+            _upper.AddChild(_ponytail);
+            // Hair tucked under the helmet's rim at the nape.
+            _upper.AddChild(new MeshInstance3D
+            {
+                Mesh = bm.Head, MaterialOverride = hairMat,
+                Transform = new Transform3D(headTilt * Basis.FromScale(new Vector3(1.04f, 0.9f, 1.05f)), HeadPos + new Vector3(0, 0.005f, 0.008f)),
+            });
+        }
 
         // Road / gravel helmet: rounded white shell sitting high over the brow, longer at the back,
         // with dark vent channels running front to back.
@@ -342,11 +379,16 @@ public partial class RiderAvatar : Node3D
     {
         public readonly Func<float, float> TorsoWidth = Meshes.Profile(-0.12f, 0, 0f, 0.175f, 0.17f, 0.142f, 0.32f, 0.17f, 0.41f, 0.185f, 0.48f, 0.14f, 0.54f, 0.08f, 0.59f, 0);
         public readonly Func<float, float> TorsoDepth = Meshes.Profile(-0.12f, 0, 0f, 0.125f, 0.17f, 0.11f, 0.32f, 0.135f, 0.41f, 0.12f, 0.48f, 0.095f, 0.54f, 0.068f, 0.59f, 0);
-        public readonly ArrayMesh Torso, Neck, Head, Helmet, Lens, LensFrame, Thigh, ShortsLeg, Shin, UpperArm, Sleeve, Forearm, Glove, Shoe, Deltoid;
+        public readonly Func<float, float> TorsoWidthFemale = Meshes.Profile(-0.12f, 0, 0f, 0.182f, 0.17f, 0.128f, 0.32f, 0.155f, 0.41f, 0.165f, 0.48f, 0.125f, 0.54f, 0.074f, 0.59f, 0);
+        public readonly Func<float, float> TorsoDepthFemale = Meshes.Profile(-0.12f, 0, 0f, 0.13f, 0.17f, 0.104f, 0.32f, 0.14f, 0.41f, 0.115f, 0.48f, 0.09f, 0.54f, 0.064f, 0.59f, 0);
+        public readonly ArrayMesh Torso, TorsoFemale, Ponytail, Neck, Head, Helmet, Lens, LensFrame, Thigh, ShortsLeg, Shin, UpperArm, Sleeve, Forearm, Glove, Shoe, Deltoid;
 
         public BodyMeshes()
         {
             Torso = Meshes.Lathe(TorsoWidth, TorsoDepth, -0.12f, 0.59f, 34, 20);
+            TorsoFemale = Meshes.Lathe(TorsoWidthFemale, TorsoDepthFemale, -0.12f, 0.59f, 34, 20);
+            // Thick at the tie, tapering to a soft point.
+            Ponytail = Meshes.Limb(0.25f, 0.036f, 0.014f, 0.3f, 0.012f, 0.85f);
             Neck = Meshes.Limb(0.11f, 0.05f, 0.046f);
             Head = Meshes.Lathe(Meshes.Profile(-0.11f, 0, -0.06f, 0.07f, 0f, 0.083f, 0.06f, 0.078f, 0.115f, 0),
                                 Meshes.Profile(-0.11f, 0, -0.06f, 0.085f, 0f, 0.1f, 0.06f, 0.092f, 0.115f, 0), -0.11f, 0.115f, 18, 18);
@@ -406,7 +448,7 @@ public partial class RiderAvatar : Node3D
     }
 
     // Shoulder joint sits inside the torso's shoulder, so the deltoid blend can cover the seam.
-    static Vector3 ShoulderPos(int side) => Chest + new Vector3(side * 0.165f, -0.005f, -0.015f);
+    Vector3 ShoulderPos(int side) => Chest + new Vector3(side * _shoulderX, -0.005f, -0.015f);
 
     // ---------------------------------------------------------------- animation
 
@@ -450,6 +492,14 @@ public partial class RiderAvatar : Node3D
 
         // The torso mesh is built for the seated length; squash slightly when standing.
         OrientFrom(_torso, pelvis, chest, (chest - pelvis).Length() / TorsoLen);
+
+        if (_ponytail != null)
+        {
+            // Hangs from under the back of the helmet, swinging side to side with the pedalling.
+            var tie = HeadPos + new Vector3(0, 0.01f, 0.12f);
+            float swing = MathF.Sin(a) * 0.04f * effort + MathF.Sin(_time * 1.7f) * 0.012f;
+            OrientFrom(_ponytail, tie, tie + new Vector3(swing, -0.17f, 0.14f - _sprint * 0.04f));
+        }
 
         for (int i = 0; i < 2; i++)
         {

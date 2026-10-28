@@ -18,6 +18,9 @@ uniform float glow = 2.4;
 uniform float fade_dist = 1100.0;
 // 1 = shaded rock surface, 0 = plain dark base (the far horizon plane).
 uniform float solid = 1.0;
+uniform vec3 rock_low : source_color = vec3(0.045, 0.02, 0.085);
+uniform vec3 rock_high_a : source_color = vec3(0.13, 0.045, 0.16);
+uniform vec3 rock_high_b : source_color = vec3(0.2, 0.07, 0.12);
 varying vec3 wpos;
 varying vec3 wnorm;
 " + NoiseLib + @"
@@ -61,8 +64,8 @@ void fragment() {
     float n = vnoise(wpos.xz / 18.0) * 0.6 + vnoise(wpos.xz / 4.0) * 0.4;
     float strata = 0.5 + 0.5 * sin(wpos.y / 3.2 + n * 3.0);
     float high = smoothstep(30.0, 160.0, UV.x);
-    vec3 low_col = vec3(0.045, 0.02, 0.085);
-    vec3 high_col = mix(vec3(0.13, 0.045, 0.16), vec3(0.2, 0.07, 0.12), strata);
+    vec3 low_col = rock_low;
+    vec3 high_col = mix(rock_high_a, rock_high_b, strata);
     ALBEDO = mix(low_col, high_col, clamp(high * 0.7 + steep * 0.5, 0.0, 1.0)) * (0.75 + 0.5 * n) * solid
            + base_color * (1.0 - solid);
     ROUGHNESS = 0.85;
@@ -288,6 +291,11 @@ uniform vec3 sun_bottom : source_color = vec3(1.0, 0.12, 0.55);
 uniform vec3 sun_dir = vec3(0.0, 0.1, -1.0);
 uniform float sun_size = 0.17;
 uniform vec3 planet_dir = vec3(0.7, 0.35, 0.6);
+uniform vec3 cloud_dark : source_color = vec3(0.07, 0.01, 0.12);
+// Biome extras: skyline under the sun (0..1) and aurora curtains (0..1).
+uniform float city = 1.0;
+uniform float aurora = 0.0;
+uniform vec3 aurora_color : source_color = vec3(0.2, 1.0, 0.6);
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 " + NoiseLib + @"
@@ -360,7 +368,7 @@ void sky() {
         float c = vnoise(cp * 1.3) * 0.55 + vnoise(cp * 3.1) * 0.3 + vnoise(cp * 7.9) * 0.15;
         float cover = smoothstep(0.52, 0.75, c) * smoothstep(0.015, 0.06, h) * smoothstep(0.42, 0.14, h);
         float sun_lit = exp(-ang * 2.4);
-        vec3 cloud = mix(vec3(0.07, 0.01, 0.12), sun_bottom * 1.1 + sun_top * 0.35, sun_lit);
+        vec3 cloud = mix(cloud_dark, sun_bottom * 1.1 + sun_top * 0.35, sun_lit);
         cloud += sun_top * pow(sun_lit, 3.0) * smoothstep(0.6, 0.85, c) * 1.6; // silver lining
         col = mix(col, cloud, cover * 0.85);
     }
@@ -368,14 +376,14 @@ void sky() {
     // Distant megacity skyline under the sun, with lit windows.
     float sun_az = atan(sd.x, sd.z);
     float ra = mod(az - sun_az + 3.14159, 6.28318) - 3.14159;
-    float city = smoothstep(1.25, 0.5, abs(ra));
-    if (city > 0.0 && h < 0.06 && h > -0.02) {
+    float cityw = smoothstep(1.25, 0.5, abs(ra)) * city;
+    if (cityw > 0.001 && h < 0.06 && h > -0.02) {
         float bx = ra * 70.0;
-        float b1 = (0.004 + pow(hash(vec2(floor(bx), 3.0)), 2.2) * 0.03) * city;
+        float b1 = (0.004 + pow(hash(vec2(floor(bx), 3.0)), 2.2) * 0.03) * cityw;
         float bx2 = ra * 140.0 + 0.37;
-        float b2 = (0.002 + pow(hash(vec2(floor(bx2), 9.0)), 3.0) * 0.045) * city;
+        float b2 = (0.002 + pow(hash(vec2(floor(bx2), 9.0)), 3.0) * 0.045) * cityw;
         // Thin antenna on a few of the tallest blocks.
-        float spire = step(0.93, hash(vec2(floor(bx2), 5.0))) * step(abs(fract(bx2) - 0.5), 0.04) * 0.02 * city;
+        float spire = step(0.93, hash(vec2(floor(bx2), 5.0))) * step(abs(fract(bx2) - 0.5), 0.04) * 0.02 * cityw;
         float top = max(max(b1, b2), b2 + spire);
         if (h < top) {
             float front = step(b1, b2);
@@ -389,6 +397,20 @@ void sky() {
             col = body + wcol * win * 1.6 + sun_bottom * edge_lit * 0.6;
             if (spire > 0.0 && h > b2) col += vec3(1.0, 0.2, 0.3) * step(top - 0.002, h) * (0.6 + 0.4 * sin(TIME * 4.0)) * 3.0;
         }
+    }
+
+    // Aurora: folded curtains with a bright wavy lower edge fading upwards (green to violet),
+    // in slowly drifting patches, away from the sun.
+    if (aurora > 0.001 && h > 0.0) {
+        float away = smoothstep(0.5, 1.6, abs(ra));
+        float base = 0.1 + vnoise(vec2(az * 1.6 + TIME * 0.015, 3.0)) * 0.14;
+        float above = h - base;
+        float curtain = smoothstep(-0.004, 0.02, above) * exp(-max(above, 0.0) * 6.0);
+        float patches = smoothstep(0.3, 0.75, vnoise(vec2(az * 3.0 - TIME * 0.02, 7.0)));
+        float rays = 0.65 + 0.35 * vnoise(vec2(az * 70.0, TIME * 0.25));
+        float a = curtain * patches * rays * away * aurora;
+        vec3 ac = mix(aurora_color, vec3(0.7, 0.3, 1.0), smoothstep(0.02, 0.22, above));
+        col += ac * a * 1.5;
     }
 
     // Occasional shooting star.

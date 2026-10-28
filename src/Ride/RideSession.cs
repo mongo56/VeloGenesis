@@ -25,6 +25,13 @@ public class RideSummary
     public List<string> Sectors = new();
     public string WorkoutName;
     public RideMode Mode;
+    public int PacksCaught, SurgesHeld, SurgesTotal;
+    public float DraftSeconds;
+    public int RhythmZones, RhythmPerfect, RhythmGood;
+    public float RhythmAccuracy;
+    public List<string> Biomes = new();
+    /// <summary>Durations where this ride set a new all-time best.</summary>
+    public List<Effort> NewBests = new();
 }
 
 /// <summary>
@@ -109,7 +116,9 @@ public partial class RideSession : Node3D
         World.GelCollected += OnGel;
         World.GelMissed += OnGelMissed;
         World.KmPassed += OnKm;
+        World.BiomeEntered += OnBiome;
         World.Init(Config, Quality.Get(s.Quality));
+        _biomes.Add(World.Current.Biome.Name);
 
         _avatar = new RiderAvatar();
         AddChild(_avatar);
@@ -195,10 +204,12 @@ public partial class RideSession : Node3D
         else
         {
             float feel = grade * s.TrainerDifficulty * (SlipstreamActive ? SlipstreamGradeFactor : 1f);
+            // Sitting in a draft pack lowers the wind resistance the trainer simulates too.
+            float cw = Physics.Cw * PackDraft;
             SentGrade = s.VirtualShifting
-                ? Gearing.TrainerGrade(feel, Cadence, trainer.TrainerSpeed, Physics.Mass, Physics.Crr, Physics.Cw, dt)
+                ? Gearing.TrainerGrade(feel, Cadence, trainer.TrainerSpeed, Physics.Mass, Physics.Crr, cw, dt)
                 : feel;
-            trainer.SetSimulation(SentGrade, Physics.Crr, Physics.Cw);
+            trainer.SetSimulation(SentGrade, Physics.Crr, cw);
         }
         if (trainer is SimulatedTrainer sim)
         {
@@ -207,10 +218,12 @@ public partial class RideSession : Node3D
         }
 
         UpdateSlipstream(dt);
+        UpdatePack(dt);
         Physics.Step(power, grade, dt);
         World.Advance(Physics.Speed * dt);
         UpdateGhostRace(dt);
         UpdateFork();
+        UpdateRhythm(dt);
 
         if (Physics.Speed > 0.5f || pedalling)
         {
@@ -376,7 +389,11 @@ public partial class RideSession : Node3D
             int plan = kids[0].IsPlan ? 0 : 1;
             Fork.Begin(erg ? _c15.Value : _p20.Value, harder, plan, erg);
             if (Attract) Fork.Choose(_rng.Next(2));
-            else Hud?.Toast("FORK AHEAD", UiTheme.Magenta);
+            else
+            {
+                Hud?.Toast("FORK AHEAD", UiTheme.Magenta);
+                Music.Synth.SfxForkAhead();
+            }
         }
         Fork.Update(erg ? _c3.Value : _p3.Value);
         World.Selection = Fork.Selection;
@@ -426,6 +443,7 @@ public partial class RideSession : Node3D
         _forksTaken++;
         EndGhostRace(null);
         MaybeStartGhostRace(chosen);
+        MaybeSpawnPack(chosen);
         GD.Print($"Fork {_forksTaken}: options {other.Kind}/{chosen.Kind}; took {chosen.Name} ({(chosen.IsHarder ? "harder" : "easier")}, {chosen.Kind}, {chosen.Length:0} m, +{chosen.Gain:0} m) at {World.GlobalDist / 1000f:0.00} km, climbed {World.GainSoFar:0} m");
     }
 
@@ -454,6 +472,18 @@ public partial class RideSession : Node3D
             Hud?.Toast($"+1 SLIPSTREAM CHARGE  ({SlipCharges}/{MaxSlipCharges})  ·  {InputSetup.Describe(InputSetup.Slipstream)}", UiTheme.Amber);
         }
         else Hud?.Toast("POWER GEL  ·  SLIPSTREAM CHARGES FULL", UiTheme.Amber);
+    }
+
+    readonly List<string> _biomes = new();
+
+    void OnBiome(Biome b)
+    {
+        if (!_biomes.Contains(b.Name)) _biomes.Add(b.Name);
+        GD.Print($"Biome: {b.Name} at {World.GlobalDist / 1000f:0.0} km");
+        if (Attract) return;
+        Music.Synth.SfxBiome();
+        Music.FreshSong();
+        Hud?.Banner($"BIOME {_biomes.Count}  ·  {b.Tagline}", b.Name.ToUpper(), b.Rolling[0].Item1.Lightened(0.25f));
     }
 
     void OnKm(int km)
@@ -490,6 +520,7 @@ public partial class RideSession : Node3D
             try { FitWriter.Write(path, Recorder, stats, s.VirtualGps); }
             catch (Exception e) { GD.PrintErr("FIT write failed: " + e); path = null; }
         }
+        var newBests = save && !Attract ? PersonalBests.Current.Record(Recorder.Samples, Recorder.StartTime) : new List<Effort>();
         return new RideSummary
         {
             Stats = stats,
@@ -505,6 +536,16 @@ public partial class RideSession : Node3D
             Sectors = new List<string>(_sectors),
             WorkoutName = Workout?.Name,
             Mode = Config.Mode,
+            PacksCaught = _packsCaught,
+            DraftSeconds = _draftSeconds,
+            SurgesHeld = _surgesHeld,
+            SurgesTotal = _surgesTotal,
+            RhythmZones = _rhythmZones,
+            RhythmPerfect = _rhythmPerfect,
+            RhythmGood = _rhythmGood,
+            RhythmAccuracy = _rhythmZones > 0 ? _rhythmAccSum / _rhythmZones : 0,
+            Biomes = new List<string>(_biomes),
+            NewBests = newBests,
         };
     }
 }

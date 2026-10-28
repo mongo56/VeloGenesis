@@ -34,6 +34,18 @@ public partial class Hud : Control
     Label _raceTitle, _raceGap, _raceInfo;
     ColorRect _raceBar, _raceFill;
     ColorRect _slipBar, _slipFill;
+    readonly Label[] _forkStake = new Label[2];
+    PanelContainer _packPanel, _rhythmPanel;
+    Label _packTitle, _packState, _packInfo, _rhythmHeader, _rhythmInfo;
+    ColorRect _packBar, _packFill;
+    RhythmGauge _rhythmGauge;
+
+    // Steady mode: secondary panels fade out during long uneventful stretches.
+    Control[] _secondary;
+    Control _slipPanel;
+    float _calm, _steadyAlpha = 1f;
+    int _lastGear = -1, _lastBias;
+    const float CalmDelay = 20f, SteadyAlpha = 0.1f;
 
     /// <summary>Hides the device status and key-hint lines (for trailers / screenshots).</summary>
     public void SetCleanMode(bool clean)
@@ -105,6 +117,24 @@ public partial class Hud : Control
         _raceBar.AddChild(_raceFill);
         rv.AddChild(_raceBar);
         _racePanel.Visible = false;
+
+        // Draft pack panel (same slot as the race panel: packs never ride into a race)
+        _packPanel = UiTheme.Anchor(UiTheme.Panel(), 1, 0, -390, 320, 366, 0);
+        AddChild(_packPanel);
+        var pv = UiTheme.VBox(2);
+        _packPanel.AddChild(pv);
+        _packTitle = UiTheme.CaptionLabel("");
+        pv.AddChild(_packTitle);
+        _packState = UiTheme.Label("", 40, UiTheme.Text, bold: true);
+        pv.AddChild(_packState);
+        _packInfo = UiTheme.Label("", 18, UiTheme.Dim);
+        pv.AddChild(_packInfo);
+        _packBar = new ColorRect { Color = new Color(1, 1, 1, 0.1f), CustomMinimumSize = new Vector2(0, 8), MouseFilter = MouseFilterEnum.Ignore };
+        _packFill = new ColorRect { MouseFilter = MouseFilterEnum.Ignore };
+        _packBar.AddChild(_packFill);
+        pv.AddChild(_packBar);
+        _packPanel.Visible = false;
+
         var sv = UiTheme.VBox(4);
         slip.AddChild(sv);
         var srow = UiTheme.HBox(12);
@@ -199,9 +229,11 @@ public partial class Hud : Control
             _forkTag[i] = UiTheme.Label("", 18, UiTheme.Dim, HorizontalAlignment.Center, true);
             _forkName[i] = UiTheme.Label("", 28, UiTheme.Text, HorizontalAlignment.Center, true);
             _forkStats[i] = UiTheme.Label("", 18, UiTheme.Dim, HorizontalAlignment.Center);
+            _forkStake[i] = UiTheme.Label("", 20, UiTheme.Text, HorizontalAlignment.Center, true);
             v.AddChild(_forkTag[i]);
             v.AddChild(_forkName[i]);
             v.AddChild(_forkStats[i]);
+            v.AddChild(_forkStake[i]);
             opts.AddChild(p);
         }
         _leanBar = new ColorRect { Color = new Color(1, 1, 1, 0.1f), CustomMinimumSize = new Vector2(0, 10), MouseFilter = MouseFilterEnum.Ignore };
@@ -210,6 +242,19 @@ public partial class Hud : Control
         fv.AddChild(_leanBar);
         _forkHelp = UiTheme.Label("", 17, UiTheme.Dim, HorizontalAlignment.Center);
         fv.AddChild(_forkHelp);
+
+        // Rhythm zone meter (same slot as the fork chooser: zones always end well before a fork)
+        _rhythmPanel = UiTheme.Anchor(UiTheme.Panel(0.7f), 0.5f, 0, -360, 170, 720, 0);
+        AddChild(_rhythmPanel);
+        var rzv = UiTheme.VBox(6);
+        _rhythmPanel.AddChild(rzv);
+        _rhythmHeader = UiTheme.Label("", 26, WorldRoot.RhythmColor, HorizontalAlignment.Center, true);
+        rzv.AddChild(_rhythmHeader);
+        _rhythmGauge = new RhythmGauge { CustomMinimumSize = new Vector2(0, 64), MouseFilter = MouseFilterEnum.Ignore };
+        rzv.AddChild(_rhythmGauge);
+        _rhythmInfo = UiTheme.Label("", 18, UiTheme.Dim, HorizontalAlignment.Center);
+        rzv.AddChild(_rhythmInfo);
+        _rhythmPanel.Visible = false;
 
         _banner = UiTheme.Anchor(UiTheme.Panel(0.65f, 22), 0.5f, 0.3f, 0, -50, 0, 0);
         var bv = UiTheme.VBox(0);
@@ -241,6 +286,39 @@ public partial class Hud : Control
         AddChild(_status);
         _hint = UiTheme.Anchor(UiTheme.Label("", 16, new Color(UiTheme.Dim, 0.8f), HorizontalAlignment.Right), 1, 1, -924, -31, 900, 24);
         AddChild(_hint);
+
+        _slipPanel = slip;
+        _secondary = new Control[] { top, _map, gp, gradePanel, _profile, _workout, slip, _footer, _status, _hint };
+    }
+
+    /// <summary>Any key or button brings the full HUD back.</summary>
+    public override void _Input(InputEvent e)
+    {
+        if (e is InputEventKey { Pressed: true } or InputEventJoypadButton { Pressed: true }) _calm = 0;
+    }
+
+    /// <summary>Steady mode: after a calm spell, fade everything but power, cadence and heart rate (and ERG).</summary>
+    void UpdateSteady(float dt)
+    {
+        var r = _ride;
+        bool erg = r.Config.Mode == RideMode.Erg;
+        bool busy = _forkPanel.Visible || _racePanel.Visible || _rhythmPanel.Visible || _toastT > 0 || _bannerT > 0
+            || r.SlipstreamActive || r.PackSurgeLeft > 0 || (r.PackActive && r.PackStatus != RideSession.PackState.Drafting)
+            || r.Gearing.Index != _lastGear || r.ErgBias != _lastBias;
+        if (erg && r.Workout != null)
+        {
+            int idx = r.Workout.Locate(r.WorkoutTime, out float tIn);
+            busy |= idx >= 0 && (r.Workout.Intervals[idx].Duration - tIn < 15f || tIn < 8f);
+        }
+        _lastGear = r.Gearing.Index;
+        _lastBias = r.ErgBias;
+        _calm = busy || !Settings.Current.SteadyHud ? 0 : _calm + dt;
+
+        float target = _calm > CalmDelay ? SteadyAlpha : 1f;
+        _steadyAlpha = Mathf.MoveToward(_steadyAlpha, target, dt * (target > _steadyAlpha ? 4f : 0.6f));
+        // A gel coming up only wakes its own panel (they're too frequent to wake everything).
+        bool gelNear = r.World.NextGelDistance is >= 0 and < 150;
+        foreach (var c in _secondary) c.Modulate = new Color(1, 1, 1, c == _slipPanel && gelNear ? 1f : _steadyAlpha);
     }
 
     static Control Stat(string caption, out Label value, int size)
@@ -344,6 +422,10 @@ public partial class Hud : Control
         UpdateFork();
         UpdateSlipstream();
         UpdateRace();
+        UpdatePack();
+        UpdateRhythm();
+        PlaceSidePanel(_gearPanel);
+        PlaceSidePanel(_ergPanel);
 
         _toastT -= dt;
         _toastPanel.Modulate = new Color(1, 1, 1, Math.Clamp(_toastT, 0, 1));
@@ -352,6 +434,7 @@ public partial class Hud : Control
         float ba = Math.Clamp(_bannerT, 0, 1);
         _banner.Modulate = new Color(1, 1, 1, ba);
         _banner.Visible = ba > 0;
+        UpdateSteady(dt);
 
         var tr = DeviceManager.Trainer;
         string hrName = DeviceManager.Hr != null ? $"{DeviceManager.Hr.Name} ({DeviceManager.Hr.State})" : "none";
@@ -359,6 +442,87 @@ public partial class Hud : Control
             + (s.ShowFps ? $"   ·   {Engine.GetFramesPerSecond():0} fps" : "");
         _hint.Text = (VeloGenesis.Main.TestMode ? $"TIME ×{Engine.TimeScale:0}  [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.TimeSlower, false)}/{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.TimeFaster, false)}]   ·   " : "")
             + $"CAM {r.CameraMode}  [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.Camera, false)}]   ·   HUD [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.ToggleHud, false)}]   ·   SKIP SONG [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.NextTrack, false)}]   ·   PAUSE [{VeloGenesis.Core.InputSetup.Describe(VeloGenesis.Core.InputSetup.Pause, false)}]";
+    }
+
+    /// <summary>
+    /// Gear / ERG panel: centred on the right edge, but pushed below the race or pack panel
+    /// (which sit under the minimap) whenever one is showing.
+    /// </summary>
+    void PlaceSidePanel(Control panel)
+    {
+        if (!panel.Visible) return;
+        float mid = Size.Y * 0.5f;
+        float top = mid - panel.Size.Y * 0.5f;
+        foreach (var above in new Control[] { _racePanel, _packPanel })
+            if (above.Visible) top = Math.Max(top, above.Position.Y + above.Size.Y + 14f);
+        panel.GrowVertical = GrowDirection.End;
+        panel.OffsetTop = panel.OffsetBottom = top - mid;
+    }
+
+    void UpdatePack()
+    {
+        var r = _ride;
+        _packPanel.Visible = r.PackActive && !r.RaceActive;
+        if (!_packPanel.Visible) return;
+        var col = r.PackColor;
+        bool surge = r.PackSurgeLeft > 0;
+        _packTitle.Text = $"DRAFT PACK  ·  {r.PackName}  ·  {r.PackPower:0} W";
+        float gap = r.PackGap;
+        switch (r.PackStatus)
+        {
+            case RideSession.PackState.Drafting:
+                _packState.Text = $"DRAFTING  -{(1f - r.PackDraft) * 100:0}%";
+                _packState.AddThemeColorOverride("font_color", UiTheme.Lime);
+                _packInfo.Text = gap <= 1f ? "sheltered in the bunch" : $"on the wheel  ·  {gap:0} m back";
+                break;
+            case RideSession.PackState.Front:
+                _packState.Text = "ON THE FRONT";
+                _packState.AddThemeColorOverride("font_color", UiTheme.Amber);
+                _packInfo.Text = "no shelter  ·  ease off to sit in";
+                break;
+            default:
+                _packState.Text = $"{gap:0} m TO THE WHEEL";
+                _packState.AddThemeColorOverride("font_color", col.Lightened(0.2f));
+                _packInfo.Text = gap < 60 ? "push to catch the last wheel" : "bridge across and sit in";
+                break;
+        }
+        if (surge)
+        {
+            _packInfo.Text = (r.PackSurgeFailed ? "DROPPED  ·  " : "SURGE!  HOLD THE WHEEL  ·  ") + $"{r.PackSurgeLeft:0} s";
+            _packInfo.AddThemeColorOverride("font_color", r.PackSurgeFailed ? UiTheme.Red : UiTheme.Amber);
+        }
+        else _packInfo.AddThemeColorOverride("font_color", UiTheme.Dim);
+        float f = surge ? r.PackSurgeLeft / RideSession.PackSurgeDuration : 1f - Math.Clamp(gap / 120f, 0f, 1f);
+        _packFill.Size = new Vector2(_packBar.Size.X * f, 8);
+        _packFill.Color = surge ? UiTheme.Amber : col;
+    }
+
+    void UpdateRhythm()
+    {
+        var r = _ride;
+        float next = r.NextRhythmDistance;
+        bool upcoming = next is >= 0 and < 250;
+        _rhythmPanel.Visible = (r.RhythmActive || upcoming) && !_forkPanel.Visible;
+        if (!_rhythmPanel.Visible) return;
+        int? zone = r.RhythmActive ? r.RhythmRpm : null;
+        if (zone == null)
+            foreach (var z in r.World.Current.Rhythm)
+                if (z.Start > r.World.DistInSeg) { zone = z.Rpm; break; }
+        _rhythmGauge.Target = zone ?? 90;
+        _rhythmGauge.Window = RideSession.RhythmWindow;
+        _rhythmGauge.Cadence = r.RhythmCadence;
+        _rhythmGauge.Locked = r.RhythmLocked;
+        _rhythmGauge.QueueRedraw();
+        if (r.RhythmActive)
+        {
+            _rhythmHeader.Text = r.RhythmLocked ? $"♪  LOCKED ON {r.RhythmRpm} RPM  ♪" : $"RHYTHM ZONE  ·  HOLD {r.RhythmRpm} RPM";
+            _rhythmInfo.Text = $"{r.RhythmAccuracy * 100:0}% on the beat   ·   {r.RhythmRemaining:0} m left   ·   85% = perfect";
+        }
+        else
+        {
+            _rhythmHeader.Text = $"RHYTHM ZONE IN {next:0} m  ·  {zone} RPM";
+            _rhythmInfo.Text = r.Config.Mode == RideMode.Erg ? "get your cadence into the green band" : "shift to find a gear for the target cadence";
+        }
     }
 
     void UpdateRace()
@@ -429,6 +593,11 @@ public partial class Hud : Control
             _forkName[i].Text = k.Name.ToUpper();
             _forkName[i].AddThemeColorOverride("font_color", sel ? k.Primary.Lightened(0.2f) : new Color(UiTheme.Dim, 0.8f));
             _forkStats[i].Text = $"{k.Length / 1000f:0.0} km   ·   +{k.Gain:0} m / -{k.Drop:0} m   ·   max {k.MaxGrade:0}%";
+            string stake = WorldRoot.FeatureLabel(k);
+            _forkStake[i].Text = stake;
+            _forkStake[i].Visible = stake != "";
+            var fc = WorldRoot.FeatureColor(k.Feature);
+            _forkStake[i].AddThemeColorOverride("font_color", sel ? fc : new Color(fc, 0.55f));
             _forkOpt[i].AddThemeStyleboxOverride("panel", UiTheme.Box(sel ? new Color(k.Primary.Darkened(0.75f), 0.75f) : new Color(0.03f, 0.02f, 0.1f, 0.45f), sel ? k.Primary : new Color(UiTheme.Dim, 0.25f), sel ? 2 : 1, 6, 10));
         }
         if (_lastSel >= 0 && _lastSel != d.Selection) r.Music.Synth.SfxForkSelect();

@@ -18,6 +18,10 @@ namespace VeloGenesis;
 ///   --shot=path.png --shot-after=8   save a screenshot then quit
 ///   --skip=metres  --camera=n  --finish-after=sec  --timescale=x  --sim-power=watts
 ///   --no-ble   skip Bluetooth auto-connect
+///   --ghost / --self-ghost   start a ghost race (replaying your own best effort) asap
+///   --pack     spawn a draft pack ahead
+///   --rhythm   put a cadence rhythm zone just ahead
+///   --biome=n  start in biome n (0 Sunset Strip, 1 Neon Metropolis, 2 Desert Grid, 3 Aurora Peaks)
 ///   --nohud    hide the ride HUD (for checking the 3D scene in screenshots)
 ///   --music=Procedural|Files|Both|External   override the music source for this run
 /// </summary>
@@ -33,7 +37,7 @@ public partial class Main : Node
     double _shotAfter = -1, _clock, _finishAfter = -1;
     int _cameraCycles, _seed = 4242, _slip;
     bool _noHud;
-    bool _ghostDbg;
+    bool _ghostDbg, _selfGhostDbg, _packDbg, _rhythmDbg;
 
     /// <summary>Set by --test (TestRide.bat): enables F6 / F7 time scaling.</summary>
     public static bool TestMode { get; private set; }
@@ -42,6 +46,7 @@ public partial class Main : Node
     public override void _Ready()
     {
         Settings.Load();
+        PersonalBests.Load();
         Online.Strava.Load();
         foreach (var a in OS.GetCmdlineUserArgs())
             if (a.StartsWith("--quality=")) Settings.Current.Quality = a[10..];
@@ -73,6 +78,10 @@ public partial class Main : Node
             else if (a.StartsWith("--slip=")) _slip = int.Parse(a[7..]);
             else if (a == "--nohud") _noHud = true;
             else if (a == "--ghost") _ghostDbg = true;
+            else if (a == "--self-ghost") _ghostDbg = _selfGhostDbg = true;
+            else if (a == "--pack") _packDbg = true;
+            else if (a == "--rhythm") _rhythmDbg = true;
+            else if (a.StartsWith("--biome=")) World.CourseGenerator.DebugStartBiome = int.Parse(a[8..]);
             else if (a.StartsWith("--timescale="))Engine.TimeScale = double.Parse(a[12..], inv);
             else if (a.StartsWith("--sim-power=")) DeviceManager.Simulator.Effort = float.Parse(a[12..], inv);
             else if (a == "--no-ble") noBle = true;
@@ -136,6 +145,9 @@ public partial class Main : Node
             _ride.DebugCameraCycles = _cameraCycles;
             _ride.DebugSlip = _slip;
             _ride.DebugGhost = _ghostDbg;
+            _ride.DebugSelfGhost = _selfGhostDbg;
+            _ride.DebugPack = _packDbg;
+            _ride.DebugRhythm = _rhythmDbg;
             if (_noHud) Callable.From(() => { if (_ride?.Hud != null) _ride.Hud.Visible = false; }).CallDeferred();
             if (screen == "pause") TogglePause();
         }
@@ -332,6 +344,7 @@ public partial class Main : Node
         _ride.Paused = true;
         _ride.PauseRequested -= TogglePause;
         if (!save) { ShowMenu(); return; }
+        if (summary.NewBests.Count > 0) _music.Synth.SfxPersonalBest();
         var sc = new SummaryScreen(summary);
         sc.Done += ShowMenu;
         SetScreen(sc);

@@ -36,10 +36,18 @@ public partial class WorldRoot : Node3D
     public event Action<Segment, Segment> ForkTaken;
     public event Action<Segment> GelCollected;
     public event Action<int> KmPassed;
+    /// <summary>Fired when the rider rides into a new biome.</summary>
+    public event Action<Biome> BiomeEntered;
 
     readonly List<Segment> _live = new();
     Segment _leadIn, _leadInNext;
-    Task<(Segment[] kids, SegmentGeometry[] geo)> _pending;
+    Task<(Segment[] kids, SegmentGeometry[] geo, List<TerrainUpdate> updates)> _pending;
+
+    /// <summary>A live segment's terrain re-carved around newly generated roads, and the props that sank with it.</summary>
+    sealed record TerrainUpdate(Segment Seg, MeshData Terrain, List<GroundedProp> Moved);
+
+    /// <summary>Lowest road on screen: the horizon grid stays below it so it never cuts across a road.</summary>
+    float _liveMinY, _horizonY = float.NaN;
     Segment _pendingFor;
 
     Godot.Environment _env;
@@ -47,6 +55,9 @@ public partial class WorldRoot : Node3D
     DirectionalLight3D _sun;
     MeshInstance3D _horizon;
     Vector3 _sunDir = new(0, 0.1f, -1);
+    ShaderMaterial _horizonMat;
+    /// <summary>The sky / fog look, blending towards the current segment's biome.</summary>
+    Biome _look;
     int _lastKm;
 
     static BoxMesh _beamMesh;
@@ -141,6 +152,7 @@ public partial class WorldRoot : Node3D
 
         var start = _gen.CreateStart();
         var geo = WorldBuilder.Build(start, null, q, _gen.WorldSeed);
+        WorldBuilder.CarveNew(start, geo, new List<RoadField>());
         Attach(start, geo);
 
         // Visual lead-in behind the start line (not part of the course), and the start gate.
@@ -155,6 +167,7 @@ public partial class WorldRoot : Node3D
             new HoloBoard.Line("BOOT SEQUENCE", 56, HoloBoard.Glow(UI.UiTheme.CaptionColor, 1.2f)),
         }, start.Secondary));
         Current = start;
+        _look = Biome.Clone(start.Biome);
         UpdatePose();
         SectorEntered?.Invoke(start);
     }
@@ -185,6 +198,9 @@ public partial class WorldRoot : Node3D
             FogLightEnergy = 1f,
             FogDensity = Quality.FogDensity,
             FogSkyAffect = 0f,
+            // Distant ridges take on the sky's colour, so far terrain dissolves into the horizon
+            // instead of ending against it.
+            FogAerialPerspective = 0.7f,
             // Low-lying mist in the valleys below the road (height follows the rider).
             FogHeightDensity = 0.015f,
             SsrEnabled = Quality.Ssr,
@@ -231,7 +247,7 @@ public partial class WorldRoot : Node3D
         };
         AddChild(_sun);
 
-        var horizonMat = new ShaderMaterial { Shader = Shaders.Terrain };
+        var horizonMat = _horizonMat = new ShaderMaterial { Shader = Shaders.Terrain };
         horizonMat.SetShaderParameter("grid_size", 40f);
         horizonMat.SetShaderParameter("glow", 1.3f);
         horizonMat.SetShaderParameter("grid_color", new Color(0.6f, 0.15f, 0.9f));
@@ -287,7 +303,14 @@ public partial class WorldRoot : Node3D
         var terrainMat = new ShaderMaterial { Shader = Shaders.Terrain };
         terrainMat.SetShaderParameter("grid_color", seg.Primary);
         terrainMat.SetShaderParameter("accent_color", seg.Secondary);
-        root.AddChild(new MeshInstance3D { Mesh = g.Terrain.ToMesh(), MaterialOverride = terrainMat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        terrainMat.SetShaderParameter("rock_low", seg.Biome.RockLow);
+        terrainMat.SetShaderParameter("rock_high_a", seg.Biome.RockHighA);
+        terrainMat.SetShaderParameter("rock_high_b", seg.Biome.RockHighB);
+        seg.TerrainNode = new MeshInstance3D { Mesh = g.Terrain.ToMesh(), MaterialOverride = terrainMat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        seg.TerrainData = g.Terrain;
+        root.AddChild(seg.TerrainNode);
+        seg.MinY = float.MaxValue;
+        foreach (var p in seg.Pos) seg.MinY = Math.Min(seg.MinY, p.Y);
 
         // Chrome guard rails on posts, street lamps and the odd gantry over the road.
         if (g.Rails.V.Length > 0)
@@ -305,17 +328,26 @@ public partial class WorldRoot : Node3D
         }
 
         // Rock formations: faceted stone with faint glowing fissures.
-        root.AddChild(MultiMeshNode(Meshes.Rock, _rockMat, g.Rocks.ConvertAll(c => c.xf), g.Rocks.ConvertAll(c => c.color)));
+        var props = new Dictionary<PropList, MultiMesh>();
+        var rocks = MultiMeshNode(Meshes.Rock, _rockMat, g.Rocks.ConvertAll(c => c.xf), g.Rocks.ConvertAll(c => c.color));
+        root.AddChild(rocks);
+        props[PropList.Rocks] = rocks.Multimesh;
         var towers = MultiMeshNode(Meshes.Rock, _rockMat, g.Towers.ConvertAll(c => c.xf), g.Towers.ConvertAll(c => c.color));
+        props[PropList.Towers] = towers.Multimesh;
         root.AddChild(towers);
         for (int i = 0; i < g.Towers.Count; i++)
             seg.Blockers.Add((towers.Multimesh, i, new Vector2(g.Towers[i].xf.Origin.X, g.Towers[i].xf.Origin.Z), 22f));
 
         // Extra scenery
-        if (g.Palms.Count > 0) root.AddChild(MultiMeshNode(_palmMesh, null, g.Palms.ConvertAll(c => c.xf), g.Palms.ConvertAll(c => c.color)));
+        MultiMesh Track(PropList l, MultiMeshInstance3D node)
+        {
+            root.AddChild(node);
+            return props[l] = node.Multimesh;
+        }
+        if (g.Palms.Count > 0) Track(PropList.Palms, MultiMeshNode(_palmMesh, null, g.Palms.ConvertAll(c => c.xf), g.Palms.ConvertAll(c => c.color)));
         if (g.TunnelRings.Count > 0) root.AddChild(MultiMeshNode(_tunnelMesh, Meshes.Glow(seg.Primary, 2.6f), g.TunnelRings, null));
-        if (g.Floaters.Count > 0) root.AddChild(MultiMeshNode(Meshes.Octahedron, _floaterMat, g.Floaters.ConvertAll(c => c.xf), g.Floaters.ConvertAll(c => c.color)));
-        if (g.FloatRings.Count > 0) root.AddChild(MultiMeshNode(_floatRingMesh, _floaterMat, g.FloatRings.ConvertAll(c => c.xf), g.FloatRings.ConvertAll(c => c.color)));
+        if (g.Floaters.Count > 0) Track(PropList.Floaters, MultiMeshNode(Meshes.Octahedron, _floaterMat, g.Floaters.ConvertAll(c => c.xf), g.Floaters.ConvertAll(c => c.color)));
+        if (g.FloatRings.Count > 0) Track(PropList.FloatRings, MultiMeshNode(_floatRingMesh, _floaterMat, g.FloatRings.ConvertAll(c => c.xf), g.FloatRings.ConvertAll(c => c.color)));
         if (g.Buildings.Count > 0)
         {
             var node = MultiMeshNode(PropMeshes.Tower, _buildingMat, g.Buildings.ConvertAll(c => c.xf), g.Buildings.ConvertAll(c => c.color));
@@ -323,7 +355,12 @@ public partial class WorldRoot : Node3D
             for (int i = 0; i < g.Buildings.Count; i++)
                 seg.Blockers.Add((node.Multimesh, i, new Vector2(g.Buildings[i].xf.Origin.X, g.Buildings[i].xf.Origin.Z), 400f));
         }
-        if (g.Beams.Count > 0) root.AddChild(MultiMeshNode(_beamCylinder, _beamMat, g.Beams.ConvertAll(c => c.xf), g.Beams.ConvertAll(c => c.color)));
+        if (g.Beams.Count > 0) Track(PropList.Beams, MultiMeshNode(_beamCylinder, _beamMat, g.Beams.ConvertAll(c => c.xf), g.Beams.ConvertAll(c => c.color)));
+
+        // Remember what stands on the terrain so it can sink with it when later roads carve it.
+        foreach (var (list, index, ground) in g.Grounded)
+            if (props.TryGetValue(list, out var mm))
+                seg.GroundedProps.Add(new GroundedProp { Mesh = mm, Index = index, Xf = g.ListOf(list)[index].xf, Ground = ground });
 
         var gelNode = MultiMeshNode(_gelMesh, _gelMat, g.Gels.ConvertAll(t => t.ScaledLocal(Vector3.One * 1.5f)), null);
         seg.GelMesh = gelNode.Multimesh;
@@ -334,7 +371,35 @@ public partial class WorldRoot : Node3D
         RemoveBlockers(seg);
 
         foreach (var (xf, km) in g.Gates) root.AddChild(MakeGate(xf, km, seg.Secondary));
+        AddFeatureGates(seg, root);
     }
+
+    /// <summary>Welcome arch for a new biome and start / end arches for cadence rhythm zones.</summary>
+    void AddFeatureGates(Segment seg, Node3D root)
+    {
+        Transform3D At(float s)
+        {
+            seg.Sample(s, out var p, out float h, out _);
+            return new Transform3D(Basis.FromEuler(new Vector3(0, -h, 0)), p);
+        }
+        if (seg.EntersBiome)
+            root.AddChild(MakeGate(At(Math.Min(260f, seg.Length * 0.3f)), new[]
+            {
+                new HoloBoard.Line("NOW ENTERING", 60, HoloBoard.Glow(UI.UiTheme.CaptionColor, 1.2f), 0.15f),
+                new HoloBoard.Line(seg.Biome.Name.ToUpper(), 150, HoloBoard.Glow(seg.Primary.Lightened(0.55f), 1.6f)),
+            }, seg.Primary));
+        foreach (var z in seg.Rhythm)
+        {
+            root.AddChild(MakeGate(At(z.Start), new[]
+            {
+                new HoloBoard.Line("RHYTHM ZONE", 60, HoloBoard.Glow(UI.UiTheme.CaptionColor, 1.2f), 0.15f),
+                new HoloBoard.Line($"{z.Rpm} RPM", 150, HoloBoard.Glow(RhythmColor.Lightened(0.5f), 1.6f)),
+            }, RhythmColor));
+            root.AddChild(MakeGate(At(z.End), "RHYTHM END", RhythmColor));
+        }
+    }
+
+    public static readonly Color RhythmColor = new(0.45f, 1f, 0.3f);
 
     /// <summary>Real lights on some of the pylons so the neon spills onto the wet road and the rider.</summary>
     void AddPylonLights(Node3D root, List<Transform3D> pylons, Color color)
@@ -382,7 +447,11 @@ public partial class WorldRoot : Node3D
 
     void RemoveBlockers(Segment added)
     {
-        static void Hide(MultiMesh mm, int i) => mm.SetInstanceTransform(i, new Transform3D(Basis.FromScale(Vector3.One * 0.0001f), new Vector3(0, -10000, 0)));
+        static void Hide(Segment owner, MultiMesh mm, int i)
+        {
+            mm.SetInstanceTransform(i, new Transform3D(Basis.FromScale(Vector3.One * 0.0001f), new Vector3(0, -10000, 0)));
+            owner.Hidden.Add((mm, i));
+        }
         static bool Near(Segment road, Vector2 p, float clear)
         {
             float c2 = clear * clear;
@@ -396,10 +465,10 @@ public partial class WorldRoot : Node3D
             if (s.Disposed) continue;
             // Existing scenery vs the new road, and the new segment's scenery vs existing roads.
             foreach (var b in s.Blockers)
-                if (Near(added, b.pos, b.clear)) Hide(b.mm, b.index);
+                if (Near(added, b.pos, b.clear)) Hide(s, b.mm, b.index);
             if (s != added)
                 foreach (var b in added.Blockers)
-                    if (Near(s, b.pos, b.clear)) Hide(b.mm, b.index);
+                    if (Near(s, b.pos, b.clear)) Hide(added, b.mm, b.index);
         }
     }
 
@@ -467,10 +536,14 @@ public partial class WorldRoot : Node3D
     }
 
     /// <summary>Position, travel direction and gradient at a distance along the current segment, in a lane.</summary>
-    public void PoseOnCurrent(float s, float lane, out Vector3 pos, out Vector3 forward, out float grade)
+    public void PoseOnCurrent(float s, float lane, out Vector3 pos, out Vector3 forward, out float grade) =>
+        PoseOn(Current, s, lane, out pos, out forward, out grade);
+
+    /// <summary>Position, travel direction and gradient at a distance along any segment, in a lane.</summary>
+    public static void PoseOn(Segment seg, float s, float lane, out Vector3 pos, out Vector3 forward, out float grade)
     {
-        Current.Sample(s, out var p, out float h, out grade);
-        Current.Sample(Math.Min(s + 2f, Current.Length), out var ahead, out _, out _);
+        seg.Sample(s, out var p, out float h, out grade);
+        seg.Sample(Math.Min(s + 2f, seg.Length), out var ahead, out _, out _);
         pos = p + Segment.RightOf(h) * lane;
         var f = ahead - p;
         forward = f.LengthSquared() > 1e-4f ? f.Normalized() : Segment.ForwardOf(h);
@@ -488,12 +561,15 @@ public partial class WorldRoot : Node3D
             string dir = c.Side < 0 ? "◀  LEFT" : "RIGHT  ▶";
             string tag = c.IsHarder ? "PUSH ▲" : "EASE ▼";
             var accent = c.Primary;
-            var label = HoloBoard.Build(accent, new[]
+            var lines = new System.Collections.Generic.List<HoloBoard.Line>
             {
-                new HoloBoard.Line($"{dir}   ·   {tag}", 72, HoloBoard.Glow(UI.UiTheme.CaptionColor, 1.2f), 0.18f),
-                new HoloBoard.Line(c.Name.ToUpper(), 180, HoloBoard.Glow(accent.Lightened(0.45f), 1.5f), 0.2f),
-                new HoloBoard.Line($"{c.Length / 1000f:0.0} km   ·   +{c.Gain:0} m   ·   max {c.MaxGrade:0}%", 78, new Color(0.85f, 0.88f, 1f)),
-            });
+                new($"{dir}   ·   {tag}", 72, HoloBoard.Glow(UI.UiTheme.CaptionColor, 1.2f), 0.18f),
+                new(c.Name.ToUpper(), 180, HoloBoard.Glow(accent.Lightened(0.45f), 1.5f), 0.2f),
+                new($"{c.Length / 1000f:0.0} km   ·   +{c.Gain:0} m   ·   max {c.MaxGrade:0}%", 78, new Color(0.85f, 0.88f, 1f)),
+            };
+            string stake = FeatureLabel(c);
+            if (stake != "") lines.Add(new(stake, 84, HoloBoard.Glow(FeatureColor(c.Feature).Lightened(0.35f), 1.5f), 0.12f));
+            var label = HoloBoard.Build(accent, lines.ToArray());
             var size = HoloBoard.SizeOf(label);
             // Stand beside the branch, facing the oncoming rider and angled slightly towards the road.
             var ground = p + Segment.RightOf(h) * c.Side * (WorldBuilder.RoadHalfWidth + 4f + size.X * 0.5f);
@@ -507,6 +583,30 @@ public partial class WorldRoot : Node3D
         }
     }
 
+    /// <summary>What a branch offers, for signs and the fork panel ("" when nothing).</summary>
+    public static string FeatureLabel(Segment c)
+    {
+        string f = c.Feature switch
+        {
+            SegmentFeature.Race => "★ GHOST RACE",
+            SegmentFeature.Pack => "≋ DRAFT PACK",
+            SegmentFeature.Rhythm => "♪ RHYTHM ZONE",
+            SegmentFeature.Gels => "◆ GEL RUSH",
+            _ => "",
+        };
+        if (c.EntersBiome) f = f == "" ? $"▸ {c.Biome.Name.ToUpper()}" : $"{f}   ·   ▸ {c.Biome.Name.ToUpper()}";
+        return f;
+    }
+
+    public static Color FeatureColor(SegmentFeature f) => f switch
+    {
+        SegmentFeature.Race => new Color(0.55f, 0.95f, 1f),
+        SegmentFeature.Pack => new Color(1f, 0.6f, 0.2f),
+        SegmentFeature.Rhythm => RhythmColor,
+        SegmentFeature.Gels => new Color(1f, 0.82f, 0.25f),
+        _ => new Color(0.85f, 0.88f, 1f),
+    };
+
     public override void _Process(double delta)
     {
         if (Current == null) return;
@@ -519,15 +619,17 @@ public partial class WorldRoot : Node3D
             var q = Quality;
             int seed = _gen.WorldSeed;
             _pendingFor = parent;
+            var live = _live.FindAll(s => !s.Disposed);
+            if (_leadIn != null) live.Add(_leadIn);
             _pending = Task.Run(() =>
             {
-                var kids = _gen.CreateFork(parent, gain);
+                var kids = _gen.CreateFork(parent, gain, live);
                 var geo = new[]
                 {
                     WorldBuilder.Build(kids[0], kids[1], q, seed),
                     WorldBuilder.Build(kids[1], kids[0], q, seed),
                 };
-                return (kids, geo);
+                return (kids, geo, CarveAround(kids, geo, live));
             });
         }
 
@@ -536,8 +638,16 @@ public partial class WorldRoot : Node3D
             if (_pending.IsFaulted) GD.PrintErr("Course generation failed: " + _pending.Exception);
             else
             {
-                var (kids, geo) = _pending.Result;
+                var (kids, geo, updates) = _pending.Result;
                 for (int i = 0; i < kids.Length; i++) Attach(kids[i], geo[i]);
+                foreach (var u in updates)
+                {
+                    if (u.Seg.Disposed || u.Seg.TerrainNode == null || !IsInstanceValid(u.Seg.TerrainNode)) continue;
+                    u.Seg.TerrainNode.Mesh = u.Terrain.ToMesh();
+                    u.Seg.TerrainData = u.Terrain;
+                    foreach (var gp in u.Moved)
+                        if (!u.Seg.Hidden.Contains((gp.Mesh, gp.Index))) gp.Mesh.SetInstanceTransform(gp.Index, gp.Xf);
+                }
                 _pendingFor.Children = kids;
                 AddForkSigns(_pendingFor);
                 if (Selection < 0 || Selection > 1) Selection = 0;
@@ -550,6 +660,41 @@ public partial class WorldRoot : Node3D
         UpdateSky((float)delta);
         _gelGlow = Mathf.MoveToward(_gelGlow, GelsActive ? 1f : 0f, (float)delta * 4f);
         _gelMat?.SetShaderParameter("active", _gelGlow);
+    }
+
+    /// <summary>
+    /// Worker thread: carves the new branches' terrain around every live road (and each other),
+    /// and the live terrains around the new roads, so no slope ever hangs over a road.
+    /// </summary>
+    static List<TerrainUpdate> CarveAround(Segment[] kids, SegmentGeometry[] geo, List<Segment> live)
+    {
+        var liveFields = live.ConvertAll(s => new RoadField(s));
+        var kidFields = Array.ConvertAll(kids, k => new RoadField(k));
+        for (int i = 0; i < kids.Length; i++)
+        {
+            var roads = new List<RoadField>(liveFields) { kidFields[1 - i] };
+            WorldBuilder.CarveNew(kids[i], geo[i], roads);
+        }
+
+        var updates = new List<TerrainUpdate>();
+        for (int j = 0; j < live.Count; j++)
+        {
+            var s = live[j];
+            if (s.TerrainData == null) continue;
+            var carved = WorldBuilder.CarveTerrain(s.TerrainData, s, kidFields);
+            if (carved == null) continue;
+            var moved = new List<GroundedProp>();
+            foreach (var gp in s.GroundedProps)
+            {
+                float drop = WorldBuilder.GroundDrop(gp.Xf.Origin.X, gp.Xf.Origin.Z, gp.Ground, liveFields[j], kidFields);
+                if (drop <= 0) continue;
+                gp.Ground -= drop;
+                gp.Xf.Origin -= new Vector3(0, drop, 0);
+                moved.Add(gp);
+            }
+            updates.Add(new TerrainUpdate(s, carved, moved));
+        }
+        return updates;
     }
 
     void CullSegments()
@@ -570,12 +715,30 @@ public partial class WorldRoot : Node3D
         if (_leadIn != null && _leadInNext.Disposed)
         {
             _leadIn.Visual?.QueueFree();
+            _leadIn.Disposed = true;
             _leadIn = null;
         }
+        _liveMinY = float.MaxValue;
+        foreach (var s in _live) _liveMinY = Math.Min(_liveMinY, s.MinY);
     }
 
     void UpdateSky(float dt)
     {
+        // Ease the sky, fog and light towards the biome we're riding through.
+        Biome.Blend(_look, Current.Biome, 1f - MathF.Exp(-dt / 6f));
+        _skyMat.SetShaderParameter("top_color", _look.SkyTop);
+        _skyMat.SetShaderParameter("horizon_color", _look.SkyHorizon);
+        _skyMat.SetShaderParameter("sun_top", _look.SunTop);
+        _skyMat.SetShaderParameter("sun_bottom", _look.SunBottom);
+        _skyMat.SetShaderParameter("cloud_dark", _look.CloudDark);
+        _skyMat.SetShaderParameter("city", _look.City);
+        _skyMat.SetShaderParameter("aurora", _look.Aurora);
+        _skyMat.SetShaderParameter("aurora_color", _look.AuroraColor);
+        _horizonMat.SetShaderParameter("grid_color", _look.GridColor);
+        _env.FogLightColor = _look.FogColor;
+        _env.AmbientLightColor = _look.Ambient;
+        _sun.LightColor = _look.SunLight;
+
         // The sun drifts to stay roughly ahead of the rider.
         var target = new Vector3(RiderForward.X, 0, RiderForward.Z).Normalized();
         var flat = new Vector3(_sunDir.X, 0, _sunDir.Z).Normalized();
@@ -584,7 +747,11 @@ public partial class WorldRoot : Node3D
         _skyMat.SetShaderParameter("sun_dir", _sunDir);
         var lightDir = new Vector3(flat.X, 0.45f, flat.Z).Normalized();
         _sun.Basis = Basis.LookingAt(-lightDir, Vector3.Up);
-        _horizon.GlobalPosition = new Vector3(Mathf.Snapped(RiderPosition.X, 40f), RiderPosition.Y - 70f, Mathf.Snapped(RiderPosition.Z, 40f));
+        // The grid floor sits under the lowest road in view (a long descent ahead must not pass
+        // beneath it) and glides there rather than jumping when a new branch appears.
+        float floorY = Math.Min(RiderPosition.Y, _liveMinY) - 70f;
+        _horizonY = float.IsNaN(_horizonY) ? floorY : Mathf.MoveToward(_horizonY, floorY, dt * 15f);
+        _horizon.GlobalPosition = new Vector3(Mathf.Snapped(RiderPosition.X, 40f), _horizonY, Mathf.Snapped(RiderPosition.Z, 40f));
         _env.FogHeight = RiderPosition.Y - 6f;
         // Ringed planet hangs well away from the sun.
         var planetFlat = flat.Rotated(Vector3.Up, 2.1f);
@@ -620,6 +787,7 @@ public partial class WorldRoot : Node3D
             DistInSeg = overflow;
             Selection = 0;
             ForkTaken?.Invoke(chosen, other);
+            if (chosen.EntersBiome) BiomeEntered?.Invoke(chosen.Biome);
             SectorEntered?.Invoke(chosen);
             CheckGels(Current, 0, DistInSeg);
         }

@@ -59,6 +59,14 @@ public partial class SummaryScreen : Screen
 
         v.AddChild(Section("EXPLORATION"));
         v.AddChild(UiTheme.Label((_sum.PowerGels ? $"Power gels collected: {_sum.Gels} of {_sum.GelsSeen}   ·   Slipstreams used: {_sum.SlipstreamsUsed}   ·   " : "") + $"Ghost races won: {_sum.RacesWon} of {_sum.RacesWon + _sum.RacesLost}", 22, UiTheme.Amber));
+        var extras = new System.Collections.Generic.List<string>();
+        if (_sum.PacksCaught > 0) extras.Add($"Draft packs caught: {_sum.PacksCaught}  ({UiTheme.Time(_sum.DraftSeconds)} in the draft)");
+        if (_sum.SurgesTotal > 0) extras.Add($"Surges held: {_sum.SurgesHeld} of {_sum.SurgesTotal}");
+        if (_sum.RhythmZones > 0) extras.Add($"Rhythm zones: {_sum.RhythmPerfect} perfect, {_sum.RhythmGood} good of {_sum.RhythmZones}  ({_sum.RhythmAccuracy * 100:0}% on the beat)");
+        if (extras.Count > 0) v.AddChild(UiTheme.Label(string.Join("   ·   ", extras), 22, UiTheme.Lime));
+        if (_sum.NewBests.Count > 0)
+            v.AddChild(UiTheme.Label("★ NEW PERSONAL BESTS   " + string.Join("   ·   ", _sum.NewBests.ConvertAll(e => $"{PersonalBests.DurationName(e.Seconds)} {e.Watts:0} W")), 24, UiTheme.Magenta, bold: true));
+        v.AddChild(UiTheme.Label("Biomes: " + string.Join("  ▸  ", _sum.Biomes), 20, UiTheme.Cyan));
         var sectors = UiTheme.Label("Sectors discovered: " + string.Join("  ·  ", _sum.Sectors), 20, UiTheme.Text);
         sectors.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         v.AddChild(sectors);
@@ -152,6 +160,8 @@ public partial class SummaryScreen : Screen
         if (_sum.Sectors.Count > 0) lines.Add("Sectors: " + string.Join(" · ", _sum.Sectors));
         if (_sum.PowerGels) lines.Add($"Power gels: {_sum.Gels}/{_sum.GelsSeen} · Slipstreams: {_sum.SlipstreamsUsed}");
         if (_sum.RacesWon + _sum.RacesLost > 0) lines.Add($"Ghost races won: {_sum.RacesWon}/{_sum.RacesWon + _sum.RacesLost}");
+        if (_sum.Biomes.Count > 1) lines.Add("Biomes: " + string.Join(" ▸ ", _sum.Biomes));
+        if (_sum.NewBests.Count > 0) lines.Add("New bests: " + string.Join(" · ", _sum.NewBests.ConvertAll(e => $"{PersonalBests.DurationName(e.Seconds)} {e.Watts:0} W")));
         return string.Join("\n", lines);
     }
 }

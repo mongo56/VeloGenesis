@@ -854,4 +854,76 @@ public partial class SynthwaveEngine : Node
     }
 
     public void SfxKm() => Play(1760, 1760, 0.2f, 0.18f);
+
+    // ---- event cues: each has its own recognisable shape so it reads without looking at the screen.
+
+    /// <summary>Two rising tones: a fork is coming up.</summary>
+    public void SfxForkAhead() { Play(523, 523, 0.14f, 0.22f, true); Play(784, 784, 0.2f, 0.22f, true, 0.16f); }
+
+    /// <summary>Race start: three ticks and a long high "go".</summary>
+    public void SfxRaceStart()
+    {
+        for (int i = 0; i < 3; i++) Play(660, 660, 0.1f, 0.28f, true, i * 0.45f);
+        Play(1320, 1320, 0.5f, 0.3f, true, 1.35f);
+    }
+
+    /// <summary>Overtake: a rising swoop when you pass, a falling one when you're passed.</summary>
+    public void SfxOvertake(bool you)
+    {
+        if (you) { Play(420, 980, 0.22f, 0.24f); Play(1318, 1318, 0.16f, 0.2f, false, 0.2f); }
+        else { Play(820, 330, 0.3f, 0.22f, true); }
+    }
+
+    /// <summary>Bell for the last 200 m of a race.</summary>
+    public void SfxRaceFinal() { Play(1568, 1568, 0.12f, 0.26f); Play(1568, 1568, 0.12f, 0.26f, false, 0.16f); Play(2093, 2093, 0.4f, 0.24f, false, 0.32f); }
+
+    /// <summary>Soft sonar ping with an echo: a draft pack is up the road.</summary>
+    public void SfxPackSpotted() { Play(880, 860, 0.35f, 0.2f); Play(880, 860, 0.35f, 0.08f, false, 0.4f); }
+
+    /// <summary>Whoosh down into the slipstream of a pack, or back up out of it.</summary>
+    public void SfxDraft(bool on)
+    {
+        if (on) { Play(1400, 380, 0.45f, 0.16f); Play(700, 190, 0.45f, 0.08f, true, 0.03f); }
+        else Play(380, 900, 0.3f, 0.12f);
+    }
+
+    /// <summary>Alarm: the pack is attacking.</summary>
+    public void SfxSurge()
+    {
+        for (int i = 0; i < 3; i++) { Play(900, 900, 0.09f, 0.26f, true, i * 0.22f); Play(1200, 1200, 0.09f, 0.26f, true, i * 0.22f + 0.1f); }
+    }
+
+    /// <summary>Little arpeggio: a rhythm zone starts.</summary>
+    public void SfxRhythmStart() { Play(523, 523, 0.1f, 0.22f, true); Play(659, 659, 0.1f, 0.22f, true, 0.1f); Play(784, 784, 0.1f, 0.22f, true, 0.2f); Play(1046, 1046, 0.25f, 0.22f, true, 0.3f); }
+
+    /// <summary>Locked onto / dropped off the target cadence.</summary>
+    public void SfxRhythmLock(bool locked)
+    {
+        if (locked) { Play(1046, 1046, 0.12f, 0.16f); Play(1568, 1568, 0.2f, 0.14f, false, 0.08f); }
+        else Play(660, 520, 0.18f, 0.12f, true);
+    }
+
+    /// <summary>Metronome click at the target cadence (played while off the beat).</summary>
+    public void SfxRhythmTick() => Play(2000, 1900, 0.03f, 0.13f);
+
+    /// <summary>Rhythm zone result: 2 = perfect, 1 = good, 0 = off beat.</summary>
+    public void SfxRhythmResult(int grade)
+    {
+        if (grade >= 2) SfxGel();
+        else if (grade == 1) { Play(784, 784, 0.12f, 0.22f); Play(1046, 1046, 0.22f, 0.22f, false, 0.12f); }
+        else Play(440, 330, 0.35f, 0.18f, true);
+    }
+
+    /// <summary>Big rising chord: entering a new biome.</summary>
+    public void SfxBiome()
+    {
+        Play(110, 220, 1.4f, 0.2f, true);
+        Play(165, 330, 1.4f, 0.16f, true, 0.1f);
+        Play(220, 440, 1.4f, 0.14f, false, 0.2f);
+        Play(1760, 1760, 0.6f, 0.12f, false, 1.3f);
+        Play(2637, 2637, 0.6f, 0.08f, false, 1.45f);
+    }
+
+    /// <summary>Fanfare: a new personal best.</summary>
+    public void SfxPersonalBest() { Play(523, 523, 0.12f, 0.25f, true); Play(659, 659, 0.12f, 0.25f, true, 0.12f); Play(784, 784, 0.12f, 0.25f, true, 0.24f); Play(1046, 1046, 0.5f, 0.28f, true, 0.36f); }
 }

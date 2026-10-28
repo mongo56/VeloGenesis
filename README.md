@@ -46,12 +46,49 @@ The HUD shows your 7-zone power zone (Coggan: Z1 recovery … Z7 neuromuscular, 
 **Z4 or higher**. Below that they're faint ghosts you pass straight through. Each gel gives a
 slipstream charge (max 3). The ride summary shows time in each zone.
 
+## Forks with stakes
+
+Each branch at a fork is signposted with what it offers besides its terrain: **★ GHOST RACE**,
+**≋ DRAFT PACK**, **♪ RHYTHM ZONE** or **◆ GEL RUSH** (double gels). The harder branch tends to hold
+races and gels, the easier one packs. The same tags show on the fork panel in the HUD.
+
 ## Ghost races (free ride)
 
-After you take a harder branch there's a 60% chance a holographic **ghost rider** pulls up in the
-left lane and challenges you to a **FINISH** arch 0.4–1.8 km ahead. It rides the same terrain with the
-same physics at a steady 85–108% of your FTP (shorter races are a bit harder). Beat it for a
-slipstream charge. Power gels and ghost races can each be switched off on the ride setup screen.
+On a GHOST RACE branch a holographic **ghost rider** pulls up in the left lane and challenges you to a
+**FINISH** arch 0.4–1.8 km ahead. It rides the same terrain with the same physics, either at a steady
+85–108% of your FTP or, about half the time once you have history, as **you**. It then replays one of
+your own best efforts (all-time best or your last ride) second by second. Your bests over 1–10 minutes
+are saved after each ride, and the summary celebrates new ones. Beat the ghost for a slipstream charge.
+Power gels and ghost races can each be switched off on the ride setup screen.
+
+## Draft packs
+
+On a DRAFT PACK branch you'll find a small bunch of AI riders (with glowing tail lights) cruising at
+62–78% of FTP. Catch the last wheel and the air drag drops by up to 38%, both in the game's physics and
+in the resistance sent to the trainer. Once you've sat in for a while they may **attack**: hold the
+wheel for 25 s to earn a slipstream charge. In ERG the bunch rides at your pace. Packs follow your line
+through forks but never onto a ghost-race branch.
+
+## Rhythm zones
+
+Arches mark a stretch with a target cadence (75–100 rpm, ±5). Hold it and the HUD meter (and your
+light trail) locks green; off the beat, a metronome ticks at the target to pull you back. 85% accuracy is
+a perfect run, which earns a slipstream charge. These zones are the main game in ERG, where cadence is
+the one thing you control.
+
+## Biomes
+
+Every ~7 km the road enters a new biome: Sunset Strip, Neon Metropolis, Desert Grid or Aurora Peaks.
+Each has its own sky, sun, fog, rock colours, road palettes and scenery, and the procedural music starts
+a new song. A welcome arch, a banner and a sound sting mark each crossing.
+
+## Steady HUD and audio cues
+
+During long uneventful stretches the HUD fades everything except power, cadence and heart rate (and the
+ERG panel). Any event or key press brings it back. Turn this off with **Settings → HUD → Steady HUD**.
+Each kind of event has its own sound so you can follow the ride without watching the screen: fork ahead,
+race start countdown, overtakes, 200 m to go, pack spotted, draft in/out, pack attack, rhythm lock and
+result, new biome, and new personal best.
 
 ## Controls
 
@@ -118,4 +155,4 @@ Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|devices|setting
 
 ## Roadmap
 
-- Ideas: ghost of your previous ride, achievements for sectors, ANT+ FE-C, exported/installer builds.
+- Ideas: achievements for sectors, ANT+ FE-C, exported/installer builds.

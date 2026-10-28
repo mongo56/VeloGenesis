@@ -11,6 +11,8 @@ public class MeshData
     public Vector3[] N;
     public Vector2[] UV;
     public int[] I;
+    /// <summary>Grid size for terrain meshes (rows along the road × columns across it).</summary>
+    public int Rows, Cols;
 
     public ArrayMesh ToMesh()
     {
@@ -44,32 +46,185 @@ public class SegmentGeometry
     public List<(Transform3D xf, Color color)> FloatRings = new();
     public List<(Transform3D xf, Color color)> Buildings = new();
     public List<(Transform3D xf, Color color)> Beams = new();
+    /// <summary>Props standing on (or floating above) the terrain, with the ground height under them.</summary>
+    public List<(PropList list, int index, float ground)> Grounded = new();
+
+    public List<(Transform3D xf, Color color)> ListOf(PropList l) => l switch
+    {
+        PropList.Rocks => Rocks,
+        PropList.Towers => Towers,
+        PropList.Palms => Palms,
+        PropList.Floaters => Floaters,
+        PropList.FloatRings => FloatRings,
+        _ => Beams,
+    };
+}
+
+public enum PropList { Rocks, Towers, Palms, Floaters, FloatRings, Beams }
+
+/// <summary>A prop instance on the terrain that moves down with it when the terrain is carved.</summary>
+public class GroundedProp
+{
+    public MultiMesh Mesh;
+    public int Index;
+    public Transform3D Xf;
+    public float Ground;
+    public bool Hidden;
+}
+
+/// <summary>
+/// Coarse copy of a road for carving terrain around it: the terrain may not rise above the road
+/// by more than a ~29° slope away from it, so no mountain ever hangs over a road. Points of the
+/// road that are close along the route (the stretch the terrain was built around) don't count;
+/// the same road looping back later does.
+/// </summary>
+public class RoadField
+{
+    public const float Flat = 7f, Slope = 0.55f, Sink = 0.4f;
+    readonly float[] _x, _z, _y, _s;
+    readonly float _minX, _maxX, _minZ, _maxZ;
+    public readonly float MinY;
+    public readonly Segment Seg;
+
+    public RoadField(Segment seg)
+    {
+        Seg = seg;
+        int n = (seg.Count + 3) / 4;
+        _x = new float[n]; _z = new float[n]; _y = new float[n]; _s = new float[n];
+        _minX = _minZ = MinY = float.MaxValue;
+        _maxX = _maxZ = float.MinValue;
+        for (int k = 0; k < n; k++)
+        {
+            int i = Math.Min(k * 4, seg.Count - 1);
+            var p = seg.Pos[i];
+            _x[k] = p.X; _z[k] = p.Z; _y[k] = p.Y; _s[k] = i * Segment.Ds;
+            _minX = Math.Min(_minX, p.X); _maxX = Math.Max(_maxX, p.X);
+            _minZ = Math.Min(_minZ, p.Z); _maxZ = Math.Max(_maxZ, p.Z);
+            MinY = Math.Min(MinY, p.Y);
+        }
+    }
+
+    /// <summary>How distances along the route are measured between a terrain's own road and this one.</summary>
+    public readonly struct Relation
+    {
+        /// <summary>0 = same road, 1 = one follows the other along the route, 2 = branches of a common fork.</summary>
+        public readonly int Kind;
+        public readonly float OwnerStart, RoadStart, Fork;
+
+        public Relation(Segment owner, Segment road)
+        {
+            OwnerStart = owner.StartDist;
+            RoadStart = road.StartDist;
+            Fork = Math.Min(OwnerStart, RoadStart);
+            if (owner == road) Kind = 0;
+            else Kind = IsAncestor(road, owner) || IsAncestor(owner, road) ? 1 : 2;
+        }
+
+        // The lead-in (id -1) runs straight into the start, so it is the ancestor of every segment.
+        static bool IsAncestor(Segment a, Segment b)
+        {
+            if (a.Id < 0) return true;
+            for (var p = b.Parent; p != null; p = p.Parent) if (p == a) return true;
+            return false;
+        }
+
+        public float PathDistance(float sOwner, float sRoad) => Kind switch
+        {
+            0 => MathF.Abs(sOwner - sRoad),
+            1 => MathF.Abs(OwnerStart + sOwner - (RoadStart + sRoad)),
+            _ => OwnerStart + sOwner - Fork + RoadStart + sRoad - Fork,
+        };
+    }
+
+    /// <summary>
+    /// Highest the terrain may be at (x, z) because of this road (+inf when it does not constrain
+    /// height y). <paramref name="cell"/> is the size of the terrain cell around the point: the
+    /// road may pass anywhere inside it, so the slope starts that much closer.
+    /// </summary>
+    public float Allowed(float x, float z, float y, in Relation rel, float sOwner, float cell)
+    {
+        if (y <= MinY - Sink) return float.MaxValue;
+        // Even the nearest point of the road's bounding box is too far away to constrain y.
+        float dx = Math.Max(Math.Max(_minX - x, x - _maxX), 0f), dz = Math.Max(Math.Max(_minZ - z, z - _maxZ), 0f);
+        float reach = (y - MinY + Sink) / Slope + Flat + cell;
+        if (dx * dx + dz * dz >= reach * reach) return float.MaxValue;
+        float best = float.MaxValue;
+        for (int k = 0; k < _x.Length; k++)
+        {
+            float ax = _x[k] - x, az = _z[k] - z;
+            float d = MathF.Sqrt(ax * ax + az * az);
+            if (rel.PathDistance(sOwner, _s[k]) < d * 1.5f + 60f) continue;
+            best = Math.Min(best, _y[k] - Sink + Math.Max(0f, d - Flat - cell) * Slope);
+        }
+        return best;
+    }
+
+    /// <summary>Distance from (x, z) to the nearest point of this road that is far away along the route.</summary>
+    public float Clearance(float x, float z, in Relation rel, float sOwner)
+    {
+        float best = float.MaxValue;
+        for (int k = 0; k < _x.Length; k++)
+        {
+            float ax = _x[k] - x, az = _z[k] - z;
+            float d = MathF.Sqrt(ax * ax + az * az);
+            if (d < best && rel.PathDistance(sOwner, _s[k]) >= d * 1.5f + 60f) best = d;
+        }
+        return best;
+    }
+
+    /// <summary>Height of, distance to and route position of the nearest point of the road.</summary>
+    public (float y, float dist, float s) Nearest(float x, float z)
+    {
+        float best = float.MaxValue, by = 0, bs = 0;
+        for (int k = 0; k < _x.Length; k++)
+        {
+            float ax = _x[k] - x, az = _z[k] - z, d2 = ax * ax + az * az;
+            if (d2 < best) { best = d2; by = _y[k]; bs = _s[k]; }
+        }
+        return (by, MathF.Sqrt(best), bs);
+    }
+
+    /// <summary>
+    /// The terrain's own road keeps its shoulders; beyond them the ground may fall away as steeply
+    /// as a cliff, so a road passing far below is never buried.
+    /// </summary>
+    public static float Floor(float ownY, float lat) => ownY - Sink - Math.Max(0f, lat - Flat) * 2.5f;
 }
 
 public static class WorldBuilder
 {
     public const float RoadHalfWidth = 3.6f;
     public const float RiderLane = 1.5f;
+    /// <summary>The mountains roll down from here to the terrain's outer edge, ending below the horizon grid.</summary>
+    public const float OuterStart = 380f, OuterEnd = 620f;
+    /// <summary>A last column far below the edge, so the rim of the terrain can never be seen against the sky.</summary>
+    const float SkirtLat = 640f, SkirtDrop = 320f;
 
     /// <summary>Height of the generated landscape at a lateral offset from the road.</summary>
-    public static float TerrainHeight(float roadY, float latAbs, float wx, float wz, float amp, int seed)
+    public static float TerrainHeight(float roadY, float latAbs, float wx, float wz, float amp, int seed, float outerEnd = OuterEnd)
     {
         float b = Noise.SmoothStep(5f, 40f, latAbs);
         float m = Noise.SmoothStep(50f, 230f, latAbs);
         float hills = Noise.Fbm2(wx / 110f, wz / 110f, seed, 3) * 9f + 3f;
         float ridges = Noise.Ridged2(wx / 320f, wz / 320f, seed + 7, 4);
-        return roadY - 0.35f + b * hills * (0.6f + 0.4f * amp) + m * (ridges * 125f + 15f) * amp;
+        // Smaller crags and gullies on the slopes so the ranges don't read as smooth sheets.
+        float crags = Noise.Fbm2(wx / 70f, wz / 70f, seed + 13, 3) * 16f;
+        float h = roadY - 0.35f + b * hills * (0.6f + 0.4f * amp) + m * (ridges * 125f + 15f + crags) * amp;
+        float outer = Noise.SmoothStep(outerEnd * (OuterStart / OuterEnd), outerEnd, latAbs);
+        return h + (roadY - 120f - h) * outer;
     }
 
     static float AmpAt(Segment seg, float s)
     {
-        // Mountain height blends to 1 at both ends so neighbouring segments meet seamlessly.
-        float w = Noise.SmoothStep(0, 250, s) * Noise.SmoothStep(0, 250, seg.Length - s);
-        return Noise.Lerp(1f, seg.MountainAmp, w);
+        // Forks sit in open valleys: the mountains ease down to low hills towards both ends, so
+        // neighbouring strips (which may be laid out a little differently) meet without a step.
+        float w = Noise.SmoothStep(0, 300, s) * Noise.SmoothStep(0, 300, seg.Length - s);
+        return Noise.Lerp(0.25f, seg.MountainAmp, w);
     }
 
     public static SegmentGeometry Build(Segment seg, Segment sibling, Quality q, int worldSeed)
     {
+        ComputeReach(seg);
         var g = new SegmentGeometry
         {
             Road = BuildRoad(seg),
@@ -79,7 +234,11 @@ public static class WorldBuilder
         g.Rails = BuildRails(seg, sibling, g.RailPosts);
         var rng = new Random(seg.Id * 7919 + worldSeed);
         BuildProps(seg, sibling, q, worldSeed, rng, g);
-        if (seg.LeadInRise > 0) ClearRisingPart(seg, g);
+        if (seg.LeadInRise > 0)
+        {
+            ClearRisingPart(seg, g);
+            g.Grounded.Clear();
+        }
         return g;
     }
 
@@ -210,20 +369,119 @@ public static class WorldBuilder
         return new MeshData { V = v.ToArray(), N = nr.ToArray(), I = idx.ToArray() };
     }
 
+    /// <summary>
+    /// How far out from road sample i (towards the sibling branch) the ground is equally far from
+    /// both roads: the shared valley line between the branches. Both branches stop their terrain on
+    /// this same line, so their edges meet. Also returns the sibling road's height nearest that point.
+    /// </summary>
+    static float SiblingGap(Segment seg, Segment sibling, int i, int sign, out float sibY)
+    {
+        var p = seg.Pos[i];
+        var r = seg.Right(i) * sign;
+        float y = p.Y;
+        float DistToSibling(float t)
+        {
+            var q = p + r * t;
+            float best = float.MaxValue;
+            for (int k = 0; k < sibling.Count; k += 3)
+            {
+                var sp = sibling.Pos[k];
+                float d2 = new Vector2(sp.X - q.X, sp.Z - q.Z).LengthSquared();
+                if (d2 < best) { best = d2; y = sp.Y; }
+            }
+            return MathF.Sqrt(best);
+        }
+        float hi = SkirtLat;
+        if (DistToSibling(hi) > hi) { sibY = y; return float.MaxValue; }
+        float lo = 0;
+        for (int it = 0; it < 14; it++)
+        {
+            float mid = (lo + hi) * 0.5f;
+            if (DistToSibling(mid) > mid) lo = mid; else hi = mid;
+        }
+        DistToSibling(lo);
+        sibY = y;
+        return lo;
+    }
+
+    /// <summary>
+    /// How far terrain rows may reach on each side before they would cross their neighbours on
+    /// the inside of a bend (most of the tightest bend radius within ±200 m), per road sample.
+    /// </summary>
+    static void ComputeReach(Segment seg)
+    {
+        if (seg.ReachRight != null) return;
+        int n = seg.Count;
+        seg.ReachRight = new float[n];
+        seg.ReachLeft = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            float right = 0, left = 0;
+            for (int j = Math.Max(0, i - 100); j <= Math.Min(n - 1, i + 100); j += 2)
+            {
+                // Positive curvature turns right, so its centre lies on the right.
+                float k = seg.Curvature[j];
+                right = Math.Max(right, k);
+                left = Math.Max(left, -k);
+            }
+            seg.ReachRight[i] = right > 1e-5f ? 0.8f / right : float.MaxValue;
+            seg.ReachLeft[i] = left > 1e-5f ? 0.8f / left : float.MaxValue;
+        }
+        // Start out laid like the end of the parent's terrain so the strips meet edge to edge
+        // (never wider than this road allows), then ease into this road's own reach.
+        var parent = seg.Parent;
+        if (parent?.ReachRight == null) return;
+        for (int i = 0; i < Math.Min(n, 100); i++)
+        {
+            float t = Noise.SmoothStep(0, 200, i * Segment.Ds);
+            seg.ReachRight[i] = Mathf.Lerp(Math.Min(parent.ReachRight[^1], seg.ReachRight[i]), seg.ReachRight[i], t);
+            seg.ReachLeft[i] = Mathf.Lerp(Math.Min(parent.ReachLeft[^1], seg.ReachLeft[i]), seg.ReachLeft[i], t);
+        }
+    }
+
+    /// <summary>
+    /// Lateral distance where a point nominally <paramref name="lat"/> metres out actually goes:
+    /// unchanged near the road, and beyond that compressed to fit inside a bend's reach.
+    /// </summary>
+    static float Squeeze(Segment seg, int i, int sign, float lat)
+    {
+        const float keep = 40f;
+        float reach = sign > 0 ? seg.ReachRight[i] : seg.ReachLeft[i];
+        if (lat <= keep || reach >= SkirtLat) return lat;
+        float maxPos = Math.Max(reach, keep + 30f);
+        return keep + (lat - keep) * (maxPos - keep) / (SkirtLat - keep);
+    }
+
+    /// <summary>World position <paramref name="lat"/> metres to one side of road sample i, as the terrain lays it out.</summary>
+    static Vector3 Lateral(Segment seg, int i, int sign, float lat) => seg.Pos[i] + seg.Right(i) * (sign * Squeeze(seg, i, sign, lat));
+
+    /// <summary>
+    /// Ground height for a point placed <paramref name="lat"/> metres out by <see cref="Lateral"/>.
+    /// Heights follow the true distance from the road; where a bend squeezes the strip, the
+    /// mountains roll off sooner (to where the strip ends) instead of being crushed into cliffs.
+    /// </summary>
+    static float GroundHeight(Segment seg, int i, int sign, float lat, float wx, float wz, float amp, int seed) =>
+        TerrainHeight(seg.Pos[i].Y, Squeeze(seg, i, sign, lat), wx, wz, amp, seed, Squeeze(seg, i, sign, OuterEnd));
+
     static MeshData BuildTerrain(Segment seg, Segment sibling, Quality q, int seed)
     {
-        var cols = new List<float>();
+        var cols = new List<float> { -SkirtLat };
         for (int c = q.TerrainColumns.Length - 1; c >= 0; c--) cols.Add(-q.TerrainColumns[c]);
         cols.Add(0);
         foreach (var c in q.TerrainColumns) cols.Add(c);
+        cols.Add(SkirtLat);
         int nc = cols.Count;
 
         var rows = new List<int>();
         for (int i = 0; i < seg.Count; i += q.TerrainRowStep) rows.Add(i);
         if (rows[^1] != seg.Count - 1) rows.Add(seg.Count - 1);
+        // The first and last rows are repeated as curtains hanging far below, so the cut ends of
+        // the strip (and the seams between strips) never show the inside of a mountain.
+        rows.Insert(0, rows[0]);
+        rows.Add(rows[^1]);
         int nr = rows.Count;
 
-        var d = new MeshData { V = new Vector3[nr * nc], N = new Vector3[nr * nc], UV = new Vector2[nr * nc], I = new int[(nr - 1) * (nc - 1) * 6] };
+        var d = new MeshData { V = new Vector3[nr * nc], N = new Vector3[nr * nc], UV = new Vector2[nr * nc], I = new int[(nr - 1) * (nc - 1) * 6], Rows = nr, Cols = nc };
         // The sibling branch lies on this side; the terrain is clipped at the bisector there.
         int innerSign = -seg.Side;
 
@@ -236,49 +494,144 @@ public static class WorldBuilder
             float amp = AmpAt(seg, s);
 
             float sepHalf = float.MaxValue, sibY = p.Y;
-            if (sibling != null && innerSign != 0 && i < sibling.Count)
-            {
-                var sp = sibling.Pos[i];
-                sepHalf = new Vector2(sp.X - p.X, sp.Z - p.Z).Length() * 0.5f;
-                sibY = sp.Y;
-            }
+            if (sibling != null && innerSign != 0) sepHalf = SiblingGap(seg, sibling, i, innerSign, out sibY);
 
             for (int ci = 0; ci < nc; ci++)
             {
                 float lat = cols[ci];
                 float latAbs = MathF.Abs(lat);
+                int sign = lat < 0 ? -1 : 1;
                 float baseY = p.Y;
-                bool inner = innerSign != 0 && MathF.Sign(lat) == innerSign;
-                if (inner && latAbs > RoadHalfWidth + 0.5f && sepHalf < 1e6f)
+                // Where the column actually goes: squeezed on the inside of bends so rows never cross.
+                float posLat = Squeeze(seg, i, sign, latAbs);
+                bool inner = innerSign != 0 && sign == innerSign;
+                if (inner && posLat > RoadHalfWidth + 0.5f && sepHalf < 1e6f)
                 {
                     // Blend towards the shared mid elevation so both branches meet without a seam.
-                    float f = latAbs / Math.Max(sepHalf, 0.01f);
+                    float f = posLat / Math.Max(sepHalf, 0.01f);
                     baseY = Noise.Lerp(p.Y, (p.Y + sibY) * 0.5f, Noise.SmoothStep(0.25f, 1f, f));
-                    latAbs = Math.Min(latAbs, sepHalf);
-                    lat = latAbs * innerSign;
+                    if (posLat > sepHalf)
+                    {
+                        latAbs *= sepHalf / posLat;
+                        posLat = sepHalf;
+                    }
                 }
-                var w = p + r * lat;
-                float y = TerrainHeight(baseY, latAbs, w.X, w.Z, amp, seed);
+                var w = p + r * (sign * posLat);
+                bool skirt = (ci == 0 || ci == nc - 1 || ri == 0 || ri == nr - 1);
+                float y = skirt ? baseY - 120f - SkirtDrop : TerrainHeight(baseY, posLat, w.X, w.Z, amp, seed, Squeeze(seg, i, sign, OuterEnd));
+                // Between two branches the land falls to a shared valley floor on the halfway
+                // line, so the terrain from both sides meets there at the same height.
+                if (inner && !skirt && sepHalf < 1e6f)
+                {
+                    // Measured against where this side really ends (a bend may stop it short).
+                    float edge = Math.Min(sepHalf, Squeeze(seg, i, sign, SkirtLat));
+                    y = Noise.Lerp(y, (p.Y + sibY) * 0.5f - 2f, Noise.SmoothStep(0.55f, 1f, posLat / Math.Max(edge, 0.01f)));
+                }
                 // Lead-in: the landscape flattens into the horizon grid towards its far end.
                 if (seg.LeadInRise > 0)
                     y = baseY - 0.35f + (y - baseY + 0.35f) * Noise.SmoothStep(0, seg.LeadInRise, s);
                 d.V[ri * nc + ci] = new Vector3(w.X, y, w.Z);
-                d.UV[ri * nc + ci] = new Vector2(latAbs, s);
+                d.UV[ri * nc + ci] = new Vector2(posLat, s);
             }
         }
 
-        // Smooth normals from grid neighbours.
+        TerrainNormals(d);
+        Quads(d.I, nr, nc);
+        return d;
+    }
+
+    /// <summary>
+    /// Smooth normals from grid neighbours. The outer ring of the grid is the hanging curtain, so
+    /// its steep faces are left out of the surface normals and it borrows the nearest inner one.
+    /// </summary>
+    static void TerrainNormals(MeshData d)
+    {
+        int nr = d.Rows, nc = d.Cols;
         for (int ri = 0; ri < nr; ri++)
             for (int ci = 0; ci < nc; ci++)
             {
-                var dx = d.V[ri * nc + Math.Min(ci + 1, nc - 1)] - d.V[ri * nc + Math.Max(ci - 1, 0)];
-                var dz = d.V[Math.Min(ri + 1, nr - 1) * nc + ci] - d.V[Math.Max(ri - 1, 0) * nc + ci];
+                int r = Math.Clamp(ri, 1, nr - 2), c = Math.Clamp(ci, 1, nc - 2);
+                var dx = d.V[r * nc + Math.Min(c + 1, nc - 2)] - d.V[r * nc + Math.Max(c - 1, 1)];
+                var dz = d.V[Math.Min(r + 1, nr - 2) * nc + c] - d.V[Math.Max(r - 1, 1) * nc + c];
                 var nrm = dx.Cross(dz);
                 d.N[ri * nc + ci] = nrm.LengthSquared() > 1e-8f ? nrm.Normalized() : Vector3.Up;
             }
+    }
 
-        Quads(d.I, nr, nc);
+    static readonly (int dr, int dc)[] Neighbours = { (0, 1), (0, -1), (1, 0), (-1, 0) };
+
+    /// <summary>
+    /// Lowers a segment's terrain wherever it would rise over a road too steeply (other roads, or
+    /// its own looping back). Returns a carved copy, or null when nothing changed. Worker-thread safe.
+    /// </summary>
+    public static MeshData CarveTerrain(MeshData t, Segment owner, IReadOnlyList<RoadField> roads)
+    {
+        var rels = new RoadField.Relation[roads.Count];
+        for (int j = 0; j < roads.Count; j++) rels[j] = new RoadField.Relation(owner, roads[j].Seg);
+        int nr = t.Rows, nc = t.Cols;
+        Vector3[] v = null;
+        for (int k = 0; k < t.V.Length; k++)
+        {
+            var p = v?[k] ?? t.V[k];
+            // Largest distance to a grid neighbour: a road could cross anywhere in that cell.
+            int ri = k / nc, ci = k % nc;
+            float cell = 0;
+            foreach (var (dr, dc) in Neighbours)
+            {
+                int r2 = ri + dr, c2 = ci + dc;
+                if (r2 < 0 || r2 >= nr || c2 < 0 || c2 >= nc) continue;
+                var q = t.V[r2 * nc + c2];
+                cell = Math.Max(cell, new Vector2(q.X - p.X, q.Z - p.Z).Length());
+            }
+            cell *= 1.42f; // across the cell's diagonal
+            float sOwner = t.UV[k].Y;
+            float allowed = float.MaxValue;
+            for (int j = 0; j < roads.Count; j++) allowed = Math.Min(allowed, roads[j].Allowed(p.X, p.Z, p.Y, rels[j], sOwner, cell));
+            if (allowed >= p.Y) continue;
+            int i = Math.Clamp((int)MathF.Round(sOwner / Segment.Ds), 0, owner.Count - 1);
+            float y = Math.Max(allowed, RoadField.Floor(owner.Pos[i].Y, t.UV[k].X));
+            if (y >= p.Y - 0.01f) continue;
+            v ??= (Vector3[])t.V.Clone();
+            v[k].Y = y;
+        }
+        if (v == null) return null;
+        var d = new MeshData { V = v, N = new Vector3[v.Length], UV = t.UV, I = t.I, Rows = t.Rows, Cols = t.Cols };
+        TerrainNormals(d);
         return d;
+    }
+
+    /// <summary>How far the ground under a prop sinks when carved for these roads.</summary>
+    public static float GroundDrop(float x, float z, float ground, RoadField own, IReadOnlyList<RoadField> roads)
+    {
+        var (ownY, lat, sOwner) = own.Nearest(x, z);
+        float allowed = float.MaxValue;
+        foreach (var r in roads) allowed = Math.Min(allowed, r.Allowed(x, z, ground, new RoadField.Relation(own.Seg, r.Seg), sOwner, 8f));
+        if (allowed >= ground) return 0;
+        return Math.Max(0f, ground - Math.Max(allowed, RoadField.Floor(ownY, lat)));
+    }
+
+    /// <summary>
+    /// Carves freshly built geometry (terrain and the props on it) around other roads and around
+    /// its own road where that loops back on itself.
+    /// </summary>
+    public static void CarveNew(Segment seg, SegmentGeometry g, IReadOnlyList<RoadField> others)
+    {
+        var own = new RoadField(seg);
+        var roads = new List<RoadField>(others) { own };
+        var carved = CarveTerrain(g.Terrain, seg, roads);
+        if (carved == null) return;
+        g.Terrain = carved;
+        for (int k = 0; k < g.Grounded.Count; k++)
+        {
+            var (list, index, ground) = g.Grounded[k];
+            var items = g.ListOf(list);
+            var (xf, color) = items[index];
+            float drop = GroundDrop(xf.Origin.X, xf.Origin.Z, ground, own, roads);
+            if (drop <= 0) continue;
+            xf.Origin -= new Vector3(0, drop, 0);
+            items[index] = (xf, color);
+            g.Grounded[k] = (list, index, ground - drop);
+        }
     }
 
     /// <summary>Triangulates a rows × cols vertex grid (clockwise when viewed from above).</summary>
@@ -326,8 +679,8 @@ public static class WorldBuilder
         foreach (var (dl, df) in new[] { (0f, 0f), (1f, 0f), (-1f, 0f), (0f, 1f), (0f, -1f) })
         {
             float lat = Math.Max(5f, latAbs + dl * radius);
-            var w = seg.Pos[i] + r * sign * lat + fwd * df * radius;
-            lowest = Math.Min(lowest, TerrainHeight(seg.Pos[i].Y, lat, w.X, w.Z, amp, seed));
+            var w = Lateral(seg, i, sign, lat) + fwd * df * radius;
+            lowest = Math.Min(lowest, GroundHeight(seg, i, sign, lat, w.X, w.Z, amp, seed));
         }
         return lowest;
     }
@@ -336,14 +689,9 @@ public static class WorldBuilder
     {
         float R(float a, float b) => a + (float)rng.NextDouble() * (b - a);
         int innerSign = -seg.Side;
+        var biome = seg.Biome;
 
-        float SepHalfAt(int i)
-        {
-            if (sibling == null || innerSign == 0 || i >= sibling.Count) return float.MaxValue;
-            var a = seg.Pos[i];
-            var b = sibling.Pos[i];
-            return new Vector2(b.X - a.X, b.Z - a.Z).Length() * 0.5f;
-        }
+        float SepHalfAt(int i) => sibling == null || innerSign == 0 ? float.MaxValue : SiblingGap(seg, sibling, i, innerSign, out _);
 
         Basis Facing(int i) => Basis.FromEuler(new Vector3(0, -seg.Heading[i], 0));
 
@@ -379,7 +727,7 @@ public static class WorldBuilder
 
         // Rock formations: half-buried faceted boulders, often in small clusters, wearing the same
         // neon grid as the terrain so they read as part of the landscape.
-        int rockClusters = (int)(seg.Length / 70f * q.SceneryDensity);
+        int rockClusters = (int)(seg.Length / 70f * q.SceneryDensity * biome.Rocks);
         for (int c = 0; c < rockClusters; c++)
         {
             float s0 = R(0, seg.Length);
@@ -393,17 +741,18 @@ public static class WorldBuilder
                 int i = Math.Clamp((int)(s / Segment.Ds), 0, seg.Count - 1);
                 float latAbs = Math.Max(12f, lat0 + R(-10f, 10f));
                 if (sign == innerSign && latAbs > SepHalfAt(i) - 14f) continue;
-                var w = seg.Pos[i] + seg.Right(i) * sign * latAbs;
+                var w = Lateral(seg, i, sign, latAbs);
                 float size = clusterSize * (k == 0 ? 1f : R(0.35f, 0.75f));
                 float y = LowestGround(seg, i, sign, latAbs, size, AmpAt(seg, s), seed);
                 var basis = Basis.FromEuler(new Vector3(R(-0.2f, 0.2f), R(0, MathF.Tau), R(-0.2f, 0.2f)))
                     * Basis.FromScale(new Vector3(size * R(0.9f, 1.5f), size * R(0.45f, 0.9f), size * R(0.8f, 1.3f)));
                 g.Rocks.Add((new Transform3D(basis, new Vector3(w.X, y - size * 0.15f, w.Z)), seg.Primary));
+                g.Grounded.Add((PropList.Rocks, g.Rocks.Count - 1, y));
             }
         }
 
         // A few tall light beams per sector, always rooted below the ground.
-        int beams = rng.NextDouble() < 0.6 * q.SceneryDensity ? 1 + (rng.NextDouble() < 0.35 ? 1 : 0) : 0;
+        int beams = rng.NextDouble() < 0.6 * q.SceneryDensity * biome.Beams ? 1 + (rng.NextDouble() < 0.35 * biome.Beams ? 1 + (biome.Beams > 1.5f ? 2 : 0) : 0) : 0;
         for (int b = 0; b < beams; b++)
         {
             float s = R(seg.Length * 0.15f, seg.Length * 0.85f);
@@ -411,16 +760,17 @@ public static class WorldBuilder
             int sign = rng.Next(2) == 0 ? -1 : 1;
             if (sign == innerSign) sign = -sign;
             float latAbs = R(70f, 200f);
-            var w = seg.Pos[i] + seg.Right(i) * sign * latAbs;
-            float ground = TerrainHeight(seg.Pos[i].Y, latAbs, w.X, w.Z, AmpAt(seg, s), seed) - 6f;
+            var w = Lateral(seg, i, sign, latAbs);
+            float ground = GroundHeight(seg, i, sign, latAbs, w.X, w.Z, AmpAt(seg, s), seed) - 6f;
             float beamH = R(220f, 360f);
             float width = R(1.6f, 2.6f);
             g.Beams.Add((new Transform3D(Basis.FromScale(new Vector3(width, beamH, width)), new Vector3(w.X, ground + beamH * 0.5f, w.Z)), rng.Next(2) == 0 ? seg.Primary : seg.Secondary));
+            g.Grounded.Add((PropList.Beams, g.Beams.Count - 1, ground + 6f));
         }
 
         // Synthwave palms lining the flatter sectors.
         float palmRate = seg.Kind switch { SectorKind.Flat => 1f, SectorKind.Start => 0.8f, SectorKind.Rolling => 0.6f, SectorKind.Descent => 0.5f, _ => 0.2f };
-        int palmCount = (int)(seg.Length / 45f * palmRate * q.SceneryDensity);
+        int palmCount = (int)(seg.Length / 45f * palmRate * q.SceneryDensity * biome.Palms);
         for (int c = 0; c < palmCount; c++)
         {
             float s = R(0, seg.Length);
@@ -428,11 +778,12 @@ public static class WorldBuilder
             int sign = rng.Next(2) == 0 ? -1 : 1;
             float latAbs = R(9f, 55f);
             if (sign == innerSign && latAbs > SepHalfAt(i) - 10f) continue;
-            var w = seg.Pos[i] + seg.Right(i) * sign * latAbs;
-            float y = TerrainHeight(seg.Pos[i].Y, latAbs, w.X, w.Z, AmpAt(seg, s), seed);
+            var w = Lateral(seg, i, sign, latAbs);
+            float y = GroundHeight(seg, i, sign, latAbs, w.X, w.Z, AmpAt(seg, s), seed);
             float size = R(7f, 13f);
             var basis = Basis.FromEuler(new Vector3(R(-0.06f, 0.06f), R(0, MathF.Tau), R(-0.06f, 0.06f))) * Basis.FromScale(Vector3.One * size);
             g.Palms.Add((new Transform3D(basis, new Vector3(w.X, y - 0.3f, w.Z)), rng.Next(3) == 0 ? seg.Primary : seg.Secondary));
+            g.Grounded.Add((PropList.Palms, g.Palms.Count - 1, y));
         }
 
         // Tunnels of light rings over the road.
@@ -449,7 +800,7 @@ public static class WorldBuilder
         }
 
         // Floating geometry above the landscape.
-        int floatCount = (int)(seg.Length / 320f * q.SceneryDensity);
+        int floatCount = (int)(seg.Length / 320f * q.SceneryDensity * biome.Floaters);
         for (int c = 0; c < floatCount; c++)
         {
             float s = R(0, seg.Length);
@@ -457,22 +808,29 @@ public static class WorldBuilder
             int sign = rng.Next(2) == 0 ? -1 : 1;
             float latAbs = R(35f, 190f);
             if (sign == innerSign && latAbs > SepHalfAt(i) - 25f) continue;
-            var w = seg.Pos[i] + seg.Right(i) * sign * latAbs;
-            float y = TerrainHeight(seg.Pos[i].Y, latAbs, w.X, w.Z, AmpAt(seg, s), seed) + R(25f, 75f);
+            var w = Lateral(seg, i, sign, latAbs);
+            float ground = GroundHeight(seg, i, sign, latAbs, w.X, w.Z, AmpAt(seg, s), seed);
+            float y = ground + R(25f, 75f);
             var color = rng.Next(2) == 0 ? seg.Primary : seg.Secondary;
             if (rng.NextDouble() < 0.3)
+            {
                 g.Floaters.Add((new Transform3D(Basis.FromScale(new Vector3(1, 1.4f, 1) * R(5f, 12f)), new Vector3(w.X, y, w.Z)), color));
+                g.Grounded.Add((PropList.Floaters, g.Floaters.Count - 1, ground));
+            }
             else
+            {
                 g.FloatRings.Add((new Transform3D(Basis.FromEuler(new Vector3(R(-1.2f, 1.2f), R(0, MathF.Tau), R(-0.4f, 0.4f))) * Basis.FromScale(Vector3.One * R(8f, 16f)), new Vector3(w.X, y, w.Z)), color));
+                g.Grounded.Add((PropList.FloatRings, g.FloatRings.Count - 1, ground));
+            }
         }
 
         // Distant neon megacity on the horizon in some sectors.
-        if (seg.Kind is SectorKind.Flat or SectorKind.Descent or SectorKind.Rolling or SectorKind.Start && rng.NextDouble() < 0.55)
+        if (seg.Kind is SectorKind.Flat or SectorKind.Descent or SectorKind.Rolling or SectorKind.Start && rng.NextDouble() < biome.CityChance)
         {
             int sideSign = rng.Next(2) == 0 ? -1 : 1;
             if (sideSign == innerSign) sideSign = -sideSign;
             float centre = R(seg.Length * 0.3f, seg.Length * 0.8f);
-            int blocks = (int)(R(12, 28) * Math.Max(0.4f, q.SceneryDensity));
+            int blocks = (int)(R(12, 28) * Math.Max(0.4f, q.SceneryDensity) * biome.CityBlocks);
             for (int c = 0; c < blocks; c++)
             {
                 float s = Math.Clamp(centre + R(-500f, 500f), 0, seg.Length);
@@ -492,7 +850,7 @@ public static class WorldBuilder
         }
 
         // Balanced-rock stacks (hoodoos): 2–4 boulders piled up, shrinking towards the top.
-        int stackCount = (int)(seg.Length / 140f * q.SceneryDensity);
+        int stackCount = (int)(seg.Length / 140f * q.SceneryDensity * biome.Stacks);
         for (int c = 0; c < stackCount; c++)
         {
             float s = R(0, seg.Length);
@@ -500,8 +858,8 @@ public static class WorldBuilder
             int sign = rng.Next(2) == 0 ? -1 : 1;
             float latAbs = R(45f, 200f);
             if (sign == innerSign && latAbs > SepHalfAt(i) - 20f) continue;
-            var w = seg.Pos[i] + seg.Right(i) * sign * latAbs;
-            float y = TerrainHeight(seg.Pos[i].Y, latAbs, w.X, w.Z, AmpAt(seg, s), seed);
+            var w = Lateral(seg, i, sign, latAbs);
+            float y = GroundHeight(seg, i, sign, latAbs, w.X, w.Z, AmpAt(seg, s), seed);
             float size = R(5f, 11f);
             var basePos = new Vector3(w.X, y - size * 0.25f, w.Z);
             int pieces = 2 + rng.Next(3);
@@ -514,6 +872,7 @@ public static class WorldBuilder
                 var p = new Vector3(basePos.X + R(-0.15f, 0.15f) * size, cy, basePos.Z + R(-0.15f, 0.15f) * size);
                 var basis = Basis.FromEuler(new Vector3(R(-0.15f, 0.15f), R(0, MathF.Tau), R(-0.15f, 0.15f))) * Basis.FromScale(scale);
                 g.Towers.Add((new Transform3D(basis, p), seg.Secondary));
+                g.Grounded.Add((PropList.Towers, g.Towers.Count - 1, y));
                 top = cy + sy * 1.0f;
                 size *= R(0.6f, 0.8f);
             }

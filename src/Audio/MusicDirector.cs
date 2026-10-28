@@ -104,6 +104,15 @@ public partial class MusicDirector : Node
         }
     }
 
+    /// <summary>
+    /// A new procedural song for a new biome – only when the synth is what's playing, so your own
+    /// tracks or the external player are never interrupted.
+    /// </summary>
+    public void FreshSong()
+    {
+        if (!External && !_files.Playing && Synth.MusicOn) Synth.NewSong();
+    }
+
     public void Next()
     {
         var s = Settings.Current;

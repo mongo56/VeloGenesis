@@ -26,10 +26,10 @@ public class Quality
     public float FogDensity;
     public float CameraFar;
 
-    static readonly float[] ColsLow = { 4, 9, 18, 32, 55, 85, 125, 175, 230 };
-    static readonly float[] ColsMed = { 4, 7, 12, 19, 28, 40, 56, 76, 100, 130, 170, 230 };
-    static readonly float[] ColsHigh = { 4, 6, 9, 13, 18, 24, 32, 42, 54, 68, 85, 105, 128, 155, 190, 230 };
-    static readonly float[] ColsUltra = { 4, 5.5f, 7.5f, 10, 13, 17, 22, 28, 35, 43, 52, 63, 76, 91, 108, 128, 150, 175, 202, 230 };
+    static readonly float[] ColsLow = { 4, 9, 18, 32, 55, 85, 125, 175, 230, 320, 440, 620 };
+    static readonly float[] ColsMed = { 4, 7, 12, 19, 28, 40, 56, 76, 100, 130, 170, 230, 290, 370, 470, 620 };
+    static readonly float[] ColsHigh = { 4, 6, 9, 13, 18, 24, 32, 42, 54, 68, 85, 105, 128, 155, 190, 230, 270, 320, 380, 450, 530, 620 };
+    static readonly float[] ColsUltra = { 4, 5.5f, 7.5f, 10, 13, 17, 22, 28, 35, 43, 52, 63, 76, 91, 108, 128, 150, 175, 202, 230, 262, 300, 345, 395, 450, 510, 570, 620 };
 
     public static readonly string[] Names = { "Low", "Medium", "High", "Ultra" };
 

@@ -5,6 +5,17 @@ namespace VeloGenesis.World;
 
 public enum SectorKind { Start, Rolling, Climb, Descent, Flat }
 
+/// <summary>What a branch offers besides its terrain – shown on the fork signs so the choice has stakes.</summary>
+public enum SegmentFeature { None, Race, Pack, Rhythm, Gels }
+
+/// <summary>A stretch of road where the rider tries to hold a target cadence.</summary>
+public struct RhythmZone
+{
+    public float Start, Length;
+    public int Rpm;
+    public float End => Start + Length;
+}
+
 /// <summary>
 /// One stretch of road between forks. Every segment ends in a fork with two child segments,
 /// generated lazily as the rider approaches.
@@ -24,6 +35,13 @@ public class Segment
     public Color Primary, Secondary;
     public bool IsHarder;
     public bool IsPlan;
+    public SegmentFeature Feature;
+    /// <summary>Index into <see cref="World.Biome.All"/>.</summary>
+    public int BiomeIndex;
+    public Biome Biome => Biome.All[BiomeIndex];
+    /// <summary>True on the first segments of a new biome (both branches of that fork).</summary>
+    public bool EntersBiome;
+    public RhythmZone[] Rhythm = Array.Empty<RhythmZone>();
 
     /// <summary>Ride distance at the start of this segment.</summary>
     public float StartDist;
@@ -47,6 +65,16 @@ public class Segment
 
     /// <summary>Large scenery instances that must be hidden if any road comes within `clear` metres.</summary>
     public readonly System.Collections.Generic.List<(MultiMesh mm, int index, Vector2 pos, float clear)> Blockers = new();
+
+    /// <summary>Terrain as last built / carved, kept so later roads can carve it again.</summary>
+    public MeshData TerrainData;
+    public MeshInstance3D TerrainNode;
+    public readonly System.Collections.Generic.List<GroundedProp> GroundedProps = new();
+    /// <summary>Scenery instances hidden as blockers (never moved back into view).</summary>
+    public readonly System.Collections.Generic.HashSet<(MultiMesh, int)> Hidden = new();
+    public float MinY;
+    /// <summary>Per road sample: how far terrain may reach to the right / left (inside of bends).</summary>
+    public float[] ReachRight, ReachLeft;
 
     public Node3D Visual;
     public bool Disposed;

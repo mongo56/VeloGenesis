@@ -55,7 +55,12 @@ public partial class SettingsScreen : Screen
         v.AddChild(Row("Anti-aliasing", aa, "TAA smooths shimmering lines in the distance best. Applies instantly."));
         var fps = new CheckButton { Text = "Show FPS", ButtonPressed = s.ShowFps };
         fps.Toggled += x => s.ShowFps = x;
-        v.AddChild(Row("Performance", fps));
+        var steady = new CheckButton { Text = "Steady HUD", ButtonPressed = s.SteadyHud };
+        steady.Toggled += x => s.SteadyHud = x;
+        var hudRow = UiTheme.HBox(24);
+        hudRow.AddChild(fps);
+        hudRow.AddChild(steady);
+        v.AddChild(Row("HUD", hudRow, "Steady HUD fades everything but power, cadence and HR during calm stretches."));
 
         v.AddChild(Section("AUDIO"));
         var src = new OptionButton();
