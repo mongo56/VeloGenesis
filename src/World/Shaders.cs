@@ -122,7 +122,7 @@ void fragment() {
     vec3 asphalt = vec3(0.016, 0.014, 0.026) * (0.6 + 0.8 * grain);
     float paint = clamp(edge + inner + dash, 0.0, 1.0);
     ALBEDO = mix(mix(asphalt, vec3(0.004, 0.003, 0.008), wet), vec3(0.5), paint * 0.3);
-    ROUGHNESS = mix(0.4 + grain * 0.22, 0.04, wet);
+    ROUGHNESS = mix(0.4 + grain * 0.22, 0.12, wet);
     SPECULAR = 0.4;
     METALLIC = 0.0;
     // Dry asphalt only faintly mirrors the bright sunset sky; puddles get the full reflection.
@@ -512,6 +512,58 @@ void fragment() {
     body += accent * (scan * 0.018 + sweep * 0.07);
     ALBEDO = mix(body, accent * 2.6, max(frame, inner));
     ALPHA = mix(0.82, 1.0, frame);
+}
+");
+
+    /// <summary>Emissive trim whose colour comes from the MultiMesh instance colour.</summary>
+    public static readonly Shader InstanceGlow = Make(@"
+shader_type spatial;
+uniform float energy = 2.6;
+void fragment() {
+    ALBEDO = vec3(0.01, 0.01, 0.02);
+    ROUGHNESS = 0.4;
+    EMISSION = COLOR.rgb * energy;
+}
+");
+
+    /// <summary>Faceted dark stone with faint glowing fissures in the instance colour.</summary>
+    public static readonly Shader Rock = Make(@"
+shader_type spatial;
+varying vec3 wpos;
+varying vec3 icolor;
+" + NoiseLib + @"
+void vertex() {
+    wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+    icolor = COLOR.rgb;
+}
+void fragment() {
+    float n = vnoise(wpos.xz * 0.35 + wpos.y * 0.2) * 0.6 + vnoise(wpos.xy * 1.3) * 0.4;
+    float strata = 0.5 + 0.5 * sin(wpos.y * 1.7 + n * 4.0);
+    ALBEDO = mix(vec3(0.05, 0.022, 0.08), vec3(0.16, 0.06, 0.15), strata * 0.6 + n * 0.4);
+    ROUGHNESS = 0.75 - strata * 0.2;
+    SPECULAR = 0.4;
+    float v = vnoise(wpos.xz * 0.18 + vec2(wpos.y * 0.15));
+    float fw = fwidth(v) * 1.5 + 1e-4;
+    float vein = 1.0 - smoothstep(0.012, 0.012 + fw, abs(v - 0.5));
+    float dist = length(VERTEX);
+    EMISSION = icolor * vein * 1.8 * clamp(1.0 - dist / 600.0, 0.0, 1.0);
+}
+");
+
+    /// <summary>Glossy candy-paint bike frame with glowing pinstripes and a coloured rim.</summary>
+    public static readonly Shader Paint = Make(@"
+shader_type spatial;
+uniform vec3 color : source_color = vec3(0.1, 0.9, 1.0);
+uniform float energy = 3.2;
+void fragment() {
+    float stripe = 1.0 - smoothstep(0.05, 0.08, abs(fract(UV.x * 2.0) - 0.5));
+    float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+    ALBEDO = color * 0.06 + vec3(0.012, 0.01, 0.02);
+    METALLIC = 0.55;
+    ROUGHNESS = 0.2;
+    CLEARCOAT = 1.0;
+    CLEARCOAT_ROUGHNESS = 0.08;
+    EMISSION = color * (stripe * energy + fres * 0.7);
 }
 ");
 }

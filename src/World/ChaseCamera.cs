@@ -43,7 +43,8 @@ public partial class ChaseCamera : Camera3D
                 lag = 3f;
                 break;
             case View.Side:
-                targetPos = rider + right * 3.3f - flat * 0.6f + Vector3.Up * 1.05f;
+                // From the road side of the rider so the guard rail never blocks the view.
+                targetPos = rider - right * 3.3f - flat * 0.6f + Vector3.Up * 1.05f;
                 targetLook = rider + flat * 0.3f + Vector3.Up * 0.75f;
                 lag = 8f;
                 break;

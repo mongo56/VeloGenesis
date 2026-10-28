@@ -29,8 +29,11 @@ public class MeshData
 /// <summary>CPU-side geometry for one segment. Built on a worker thread, uploaded on the main thread.</summary>
 public class SegmentGeometry
 {
-    public MeshData Road, Walls, Terrain;
+    public MeshData Road, Walls, Terrain, Rails;
+    /// <summary>Lamp posts at ground level, arm pointing over the road (local +X).</summary>
     public List<Transform3D> Pylons = new();
+    public List<Transform3D> RailPosts = new();
+    public List<Transform3D> Gantries = new();
     public List<(Transform3D xf, Color color)> Rocks = new();
     public List<(Transform3D xf, Color color)> Towers = new();
     public List<(Transform3D xf, int km)> Gates = new();
@@ -73,6 +76,7 @@ public static class WorldBuilder
             Walls = BuildWalls(seg),
             Terrain = BuildTerrain(seg, sibling, q, worldSeed),
         };
+        g.Rails = BuildRails(seg, sibling, g.RailPosts);
         var rng = new Random(seg.Id * 7919 + worldSeed);
         BuildProps(seg, sibling, q, worldSeed, rng, g);
         return g;
@@ -130,6 +134,78 @@ public static class WorldBuilder
                 d.I[k++] = b; d.I[k++] = a + 1; d.I[k++] = b + 1;
             }
         return d;
+    }
+
+    // Guard-rail beam cross-section (lateral offset outwards from the rail line, height), closed.
+    static readonly Vector2[] RailProfile =
+    {
+        new(0f, 0.6f), new(0f, 0.82f), new(0.025f, 0.86f), new(0.07f, 0.86f), new(0.07f, 0.56f), new(0.025f, 0.56f),
+    };
+    const float RailOffset = 0.35f;
+
+    /// <summary>
+    /// Chrome guard rails along both edges, with posts every 4 m. On the side facing the sibling
+    /// branch the rail only starts once the two roads have separated.
+    /// </summary>
+    static MeshData BuildRails(Segment seg, Segment sibling, List<Transform3D> posts)
+    {
+        int n = seg.Count;
+        int innerSign = -seg.Side;
+        var v = new List<Vector3>();
+        var nr = new List<Vector3>();
+        var idx = new List<int>();
+        int pc = RailProfile.Length;
+
+        bool Present(int i, int sign)
+        {
+            if (sibling == null || sign != innerSign || i >= sibling.Count) return true;
+            var a = seg.Pos[i];
+            var b = sibling.Pos[i];
+            return new Vector2(b.X - a.X, b.Z - a.Z).Length() * 0.5f > RoadHalfWidth + 1.5f;
+        }
+
+        foreach (int sign in new[] { -1, 1 })
+        {
+            for (int f = 0; f < pc; f++)
+            {
+                var a2 = RailProfile[f];
+                var b2 = RailProfile[(f + 1) % pc];
+                // Outward normal of this face in profile space (profile is wound clockwise).
+                var e = b2 - a2;
+                var n2 = new Vector2(-e.Y, e.X).Normalized();
+                int start = -1;
+                for (int i = 0; i < n; i++)
+                {
+                    bool here = Present(i, sign);
+                    if (!here) { start = -1; continue; }
+                    var r = seg.Right(i) * sign;
+                    var basePos = seg.Pos[i] + r * (RoadHalfWidth + RailOffset);
+                    var nrm = (r * n2.X + Vector3.Up * n2.Y).Normalized();
+                    v.Add(basePos + r * a2.X + Vector3.Up * a2.Y);
+                    v.Add(basePos + r * b2.X + Vector3.Up * b2.Y);
+                    nr.Add(nrm);
+                    nr.Add(nrm);
+                    int k = v.Count - 2;
+                    if (start >= 0)
+                    {
+                        // Wind each quad so it faces along its normal.
+                        var pa = v[k - 2]; var pb = v[k - 1]; var pcv = v[k];
+                        bool flip = (pb - pa).Cross(pcv - pa).Dot(nrm) > 0;
+                        if (flip) { idx.Add(k - 2); idx.Add(k); idx.Add(k - 1); idx.Add(k - 1); idx.Add(k); idx.Add(k + 1); }
+                        else { idx.Add(k - 2); idx.Add(k - 1); idx.Add(k); idx.Add(k - 1); idx.Add(k + 1); idx.Add(k); }
+                    }
+                    start = i;
+                }
+            }
+            for (int i = 1; i < n; i += 2)
+            {
+                if (!Present(i, sign)) continue;
+                var r = seg.Right(i) * sign;
+                var p = seg.Pos[i] + r * (RoadHalfWidth + RailOffset + 0.11f) + Vector3.Up * 0.35f;
+                posts.Add(new Transform3D(Basis.FromEuler(new Vector3(0, -seg.Heading[i], 0)) * Basis.FromScale(new Vector3(0.09f, 0.9f, 0.09f)), p));
+            }
+        }
+        return new MeshData { V = v.ToArray(), N = nr.ToArray(), I = idx.ToArray() };
     }
 
     static MeshData BuildTerrain(Segment seg, Segment sibling, Quality q, int seed)
@@ -213,6 +289,21 @@ public static class WorldBuilder
             }
     }
 
+    /// <summary>Lowest terrain height across a footprint of the given radius around a lateral position.</summary>
+    static float LowestGround(Segment seg, int i, int sign, float latAbs, float radius, float amp, int seed)
+    {
+        float lowest = float.MaxValue;
+        var fwd = Segment.ForwardOf(seg.Heading[i]);
+        var r = seg.Right(i);
+        foreach (var (dl, df) in new[] { (0f, 0f), (1f, 0f), (-1f, 0f), (0f, 1f), (0f, -1f) })
+        {
+            float lat = Math.Max(5f, latAbs + dl * radius);
+            var w = seg.Pos[i] + r * sign * lat + fwd * df * radius;
+            lowest = Math.Min(lowest, TerrainHeight(seg.Pos[i].Y, lat, w.X, w.Z, amp, seed));
+        }
+        return lowest;
+    }
+
     static void BuildProps(Segment seg, Segment sibling, Quality q, int seed, Random rng, SegmentGeometry g)
     {
         float R(float a, float b) => a + (float)rng.NextDouble() * (b - a);
@@ -228,13 +319,24 @@ public static class WorldBuilder
 
         Basis Facing(int i) => Basis.FromEuler(new Vector3(0, -seg.Heading[i], 0));
 
-        // Light pylons along both road edges.
+        // Street lamps along both road edges (local +X reaches over the road).
         for (float s = 10; s < seg.Length; s += 40f)
         {
             int i = (int)(s / Segment.Ds);
             var r = seg.Right(i);
             foreach (int side in new[] { -1, 1 })
-                g.Pylons.Add(new Transform3D(Facing(i), seg.Pos[i] + r * side * (RoadHalfWidth + 0.7f) + Vector3.Up * 1.1f));
+            {
+                var basis = side < 0 ? Facing(i) : Facing(i) * new Basis(Vector3.Up, MathF.PI);
+                g.Pylons.Add(new Transform3D(basis, seg.Pos[i] + r * side * (RoadHalfWidth + 0.75f)));
+            }
+        }
+
+        // Occasional truss gantries spanning the road, clear of the fork at either end.
+        for (float s = R(220f, 520f); s < seg.Length - 150f; s += R(450f, 900f))
+        {
+            int i = (int)(s / Segment.Ds);
+            if (SepHalfAt(i) < RoadHalfWidth + PropMeshes.GantryHalfSpan + 2f) continue;
+            g.Gantries.Add(new Transform3D(Facing(i), seg.Pos[i]));
         }
 
         // Kilometre gates.
@@ -264,11 +366,11 @@ public static class WorldBuilder
                 float latAbs = Math.Max(12f, lat0 + R(-10f, 10f));
                 if (sign == innerSign && latAbs > SepHalfAt(i) - 14f) continue;
                 var w = seg.Pos[i] + seg.Right(i) * sign * latAbs;
-                float y = TerrainHeight(seg.Pos[i].Y, latAbs, w.X, w.Z, AmpAt(seg, s), seed);
                 float size = clusterSize * (k == 0 ? 1f : R(0.35f, 0.75f));
+                float y = LowestGround(seg, i, sign, latAbs, size, AmpAt(seg, s), seed);
                 var basis = Basis.FromEuler(new Vector3(R(-0.2f, 0.2f), R(0, MathF.Tau), R(-0.2f, 0.2f)))
                     * Basis.FromScale(new Vector3(size * R(0.9f, 1.5f), size * R(0.45f, 0.9f), size * R(0.8f, 1.3f)));
-                g.Rocks.Add((new Transform3D(basis, new Vector3(w.X, y - size * 0.2f, w.Z)), seg.Primary));
+                g.Rocks.Add((new Transform3D(basis, new Vector3(w.X, y - size * 0.15f, w.Z)), seg.Primary));
             }
         }
 

@@ -192,31 +192,44 @@ public static class Meshes
         st.SetMaterial(trunkMat);
         st.Commit(mesh);
 
-        // Fronds: curved, tapered strips radiating from the crown (double-sided material).
+        // Fronds: a thin curved rib with drooping leaflets on both sides (double-sided material).
+        // UV.x is 0.5 along the rib and 0 / 1 at the leaflet tips, so the shader can light both.
         st = new SurfaceTool();
         st.Begin(Mesh.PrimitiveType.Triangles);
         var crown = Spine(1f);
-        const int fronds = 8, steps = 8;
+        const int fronds = 9, steps = 14;
         for (int f = 0; f < fronds; f++)
         {
             float ang = Mathf.Tau * f / fronds + (f % 2) * 0.2f;
             var dir = new Vector3(Mathf.Cos(ang), 0, Mathf.Sin(ang));
             var side = new Vector3(-dir.Z, 0, dir.X);
-            float length = 0.45f + 0.08f * (f % 3);
+            float length = 0.48f + 0.08f * (f % 3);
+            float lift = f % 3 == 0 ? 0.16f : 0.1f;
+            Vector3 C(float u) => crown + dir * (u * length) + Vector3.Up * (lift * Mathf.Sin(u * Mathf.Pi * 0.8f) - 0.32f * u * u);
             for (int s = 0; s < steps; s++)
             {
                 float u0 = (float)s / steps, u1 = (float)(s + 1) / steps;
-                Vector3 C(float u) => crown + dir * (u * length) + Vector3.Up * (0.12f * Mathf.Sin(u * Mathf.Pi * 0.8f) - 0.3f * u * u);
-                float w0 = 0.07f * Mathf.Sin(Mathf.Pi * Mathf.Min(u0 + 0.08f, 1f)), w1 = 0.07f * Mathf.Sin(Mathf.Pi * Mathf.Min(u1 + 0.08f, 1f));
                 var c0 = C(u0); var c1 = C(u1);
-                var l0 = c0 - side * w0 - Vector3.Up * w0 * 0.3f; var r0 = c0 + side * w0 - Vector3.Up * w0 * 0.3f;
-                var l1 = c1 - side * w1 - Vector3.Up * w1 * 0.3f; var r1 = c1 + side * w1 - Vector3.Up * w1 * 0.3f;
-                var nrm = (c1 - c0).Cross(side).Normalized();
+                var along = (c1 - c0).Normalized();
+                var nrm = along.Cross(side).Normalized();
                 if (nrm.Y < 0) nrm = -nrm;
-                Vtx(st, l0, nrm, new Vector2(0, u0)); Vtx(st, l1, nrm, new Vector2(0, u1)); Vtx(st, c0, nrm, new Vector2(0.5f, u0));
-                Vtx(st, c0, nrm, new Vector2(0.5f, u0)); Vtx(st, l1, nrm, new Vector2(0, u1)); Vtx(st, c1, nrm, new Vector2(0.5f, u1));
-                Vtx(st, c0, nrm, new Vector2(0.5f, u0)); Vtx(st, c1, nrm, new Vector2(0.5f, u1)); Vtx(st, r0, nrm, new Vector2(1, u0));
-                Vtx(st, r0, nrm, new Vector2(1, u0)); Vtx(st, c1, nrm, new Vector2(0.5f, u1)); Vtx(st, r1, nrm, new Vector2(1, u1));
+                // Rib
+                float rw = 0.008f * (1f - u0 * 0.7f);
+                Vtx(st, c0 - side * rw, nrm, new Vector2(0.48f, u0)); Vtx(st, c1 - side * rw, nrm, new Vector2(0.48f, u1)); Vtx(st, c0 + side * rw, nrm, new Vector2(0.52f, u0));
+                Vtx(st, c0 + side * rw, nrm, new Vector2(0.52f, u0)); Vtx(st, c1 - side * rw, nrm, new Vector2(0.48f, u1)); Vtx(st, c1 + side * rw, nrm, new Vector2(0.52f, u1));
+                // Leaflets, longest mid-frond, swept towards the tip and drooping.
+                float um = (u0 + u1) * 0.5f;
+                float leaf = 0.15f * Mathf.Sin(Mathf.Pi * Mathf.Min(um + 0.12f, 1f));
+                foreach (int sd in new[] { -1, 1 })
+                {
+                    var b0 = c0 + along * 0.004f;
+                    var b1 = c1 - along * 0.004f;
+                    var tip = (c0 + c1) * 0.5f + side * sd * leaf + along * leaf * 0.45f + Vector3.Down * leaf * 0.55f;
+                    var ln = (b1 - b0).Cross(tip - b0).Normalized();
+                    if (ln.Y < 0) ln = -ln;
+                    float tu = sd < 0 ? 0f : 1f;
+                    Vtx(st, b0, ln, new Vector2(0.5f, u0)); Vtx(st, b1, ln, new Vector2(0.5f, u1)); Vtx(st, tip, ln, new Vector2(tu, um));
+                }
             }
         }
         st.SetMaterial(frondMat);
@@ -285,7 +298,7 @@ public static class Meshes
     }
 
     /// <summary>a→b→c→d counter-clockwise seen from the normal side.</summary>
-    static void Quad(SurfaceTool st, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 n)
+    internal static void Quad(SurfaceTool st, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 n)
     {
         TriN(st, a, b, c, n);
         TriN(st, a, c, d, n);

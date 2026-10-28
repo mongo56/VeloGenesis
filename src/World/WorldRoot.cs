@@ -48,11 +48,11 @@ public partial class WorldRoot : Node3D
     Vector3 _sunDir = new(0, 0.1f, -1);
     int _lastKm;
 
-    static BoxMesh _pylonMesh, _beamMesh, _towerMesh;
+    static BoxMesh _beamMesh;
     static ArrayMesh _palmMesh;
     static TorusMesh _tunnelMesh, _floatRingMesh;
     static CylinderMesh _beamCylinder;
-    static ShaderMaterial _floaterMat, _buildingMat, _beamMat, _gelMat;
+    static ShaderMaterial _floaterMat, _buildingMat, _beamMat, _gelMat, _rockMat;
     static ArrayMesh _gelMesh;
     GpuParticles3D _sparks;
 
@@ -70,6 +70,7 @@ public partial class WorldRoot : Node3D
         _buildingMat = new ShaderMaterial { Shader = Shaders.Building };
         _beamMat = new ShaderMaterial { Shader = Shaders.Beam };
         _gelMat = new ShaderMaterial { Shader = Shaders.Gel };
+        _rockMat = new ShaderMaterial { Shader = Shaders.Rock };
         _gelMat.SetShaderParameter("color", new Color(1f, 0.82f, 0.25f));
         // Energy-gel pouch: flat sachet with a narrow tear-off top.
         _gelMesh = Meshes.Lathe(
@@ -133,9 +134,7 @@ public partial class WorldRoot : Node3D
         Config = cfg;
         Quality = q;
         _gen = new CourseGenerator(cfg);
-        _pylonMesh ??= new BoxMesh { Size = new Vector3(0.12f, 2.2f, 0.12f) };
         _beamMesh ??= new BoxMesh { Size = Vector3.One };
-        _towerMesh ??= new BoxMesh { Size = Vector3.One };
 
         SetupEnvironment();
 
@@ -248,6 +247,7 @@ public partial class WorldRoot : Node3D
 
     void Attach(Segment seg, SegmentGeometry g)
     {
+        EnsureSceneryResources();
         var root = new Node3D { Name = $"Seg{seg.Id}" };
         AddChild(root);
         seg.Visual = root;
@@ -267,25 +267,36 @@ public partial class WorldRoot : Node3D
         terrainMat.SetShaderParameter("accent_color", seg.Secondary);
         root.AddChild(new MeshInstance3D { Mesh = g.Terrain.ToMesh(), MaterialOverride = terrainMat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
 
-        root.AddChild(MultiMeshNode(_pylonMesh, Meshes.Glow(seg.Primary, 2.2f), g.Pylons, null));
+        // Chrome guard rails on posts, street lamps and the odd gantry over the road.
+        if (g.Rails.V.Length > 0)
+            root.AddChild(new MeshInstance3D { Mesh = g.Rails.ToMesh(), MaterialOverride = PropMeshes.Chrome });
+        if (g.RailPosts.Count > 0) root.AddChild(MultiMeshNode(_beamMesh, PropMeshes.Metal, g.RailPosts, null));
+        root.AddChild(MultiMeshNode(PropMeshes.LampPost, null, g.Pylons, g.Pylons.ConvertAll(_ => seg.Primary)));
         AddPylonLights(root, g.Pylons, seg.Primary);
+        if (g.Gantries.Count > 0)
+        {
+            root.AddChild(MultiMeshNode(PropMeshes.Gantry, null, g.Gantries, g.Gantries.ConvertAll(_ => seg.Secondary)));
+            if (Quality.PylonLightSpacing > 0)
+                foreach (var xf in g.Gantries)
+                    foreach (int sx in new[] { -1, 1 })
+                        root.AddChild(GantryLight(xf, sx * 2.2f, seg.Secondary));
+        }
 
-        // Rock formations share the terrain grid material so they belong to the landscape.
-        root.AddChild(MultiMeshNode(Meshes.Rock, terrainMat, g.Rocks.ConvertAll(c => c.xf), null));
-        var towers = MultiMeshNode(Meshes.Rock, terrainMat, g.Towers.ConvertAll(c => c.xf), null);
+        // Rock formations: faceted stone with faint glowing fissures.
+        root.AddChild(MultiMeshNode(Meshes.Rock, _rockMat, g.Rocks.ConvertAll(c => c.xf), g.Rocks.ConvertAll(c => c.color)));
+        var towers = MultiMeshNode(Meshes.Rock, _rockMat, g.Towers.ConvertAll(c => c.xf), g.Towers.ConvertAll(c => c.color));
         root.AddChild(towers);
         for (int i = 0; i < g.Towers.Count; i++)
             seg.Blockers.Add((towers.Multimesh, i, new Vector2(g.Towers[i].xf.Origin.X, g.Towers[i].xf.Origin.Z), 22f));
 
         // Extra scenery
-        EnsureSceneryResources();
         if (g.Palms.Count > 0) root.AddChild(MultiMeshNode(_palmMesh, null, g.Palms.ConvertAll(c => c.xf), g.Palms.ConvertAll(c => c.color)));
         if (g.TunnelRings.Count > 0) root.AddChild(MultiMeshNode(_tunnelMesh, Meshes.Glow(seg.Primary, 2.6f), g.TunnelRings, null));
         if (g.Floaters.Count > 0) root.AddChild(MultiMeshNode(Meshes.Octahedron, _floaterMat, g.Floaters.ConvertAll(c => c.xf), g.Floaters.ConvertAll(c => c.color)));
         if (g.FloatRings.Count > 0) root.AddChild(MultiMeshNode(_floatRingMesh, _floaterMat, g.FloatRings.ConvertAll(c => c.xf), g.FloatRings.ConvertAll(c => c.color)));
         if (g.Buildings.Count > 0)
         {
-            var node = MultiMeshNode(_towerMesh, _buildingMat, g.Buildings.ConvertAll(c => c.xf), g.Buildings.ConvertAll(c => c.color));
+            var node = MultiMeshNode(PropMeshes.Tower, _buildingMat, g.Buildings.ConvertAll(c => c.xf), g.Buildings.ConvertAll(c => c.color));
             root.AddChild(node);
             for (int i = 0; i < g.Buildings.Count; i++)
                 seg.Blockers.Add((node.Multimesh, i, new Vector2(g.Buildings[i].xf.Origin.X, g.Buildings[i].xf.Origin.Z), 400f));
@@ -312,7 +323,7 @@ public partial class WorldRoot : Node3D
         for (int pair = 0, k = 0; pair * 2 + 1 < pylons.Count; pair += step, k++)
         {
             var xf = pylons[pair * 2 + (k & 1)];
-            root.AddChild(PylonLight(xf.Origin + Vector3.Up * 1.0f, color));
+            root.AddChild(PylonLight(xf * (PropMeshes.LampHead + Vector3.Down * 0.15f), color));
         }
     }
 
@@ -322,12 +333,28 @@ public partial class WorldRoot : Node3D
         LightColor = color,
         LightEnergy = 4f,
         LightVolumetricFogEnergy = 0.6f,
-        LightSpecular = 1f,
+        LightSpecular = 0.5f,
         OmniRange = 13f,
         OmniAttenuation = 1.2f,
         ShadowEnabled = false,
         DistanceFadeEnabled = true,
         DistanceFadeBegin = 200f,
+        DistanceFadeLength = 60f,
+    };
+
+    /// <summary>Downlight under a gantry, pooling colour on the wet road.</summary>
+    static SpotLight3D GantryLight(Transform3D gantry, float x, Color color) => new()
+    {
+        Transform = new Transform3D(gantry.Basis * new Basis(Vector3.Right, -MathF.PI / 2), gantry * new Vector3(x, PropMeshes.GantryHeight - 1.3f, 0)),
+        LightColor = color,
+        LightEnergy = 6f,
+        LightVolumetricFogEnergy = 1.2f,
+        SpotRange = 12f,
+        SpotAngle = 38f,
+        SpotAttenuation = 0.8f,
+        ShadowEnabled = false,
+        DistanceFadeEnabled = true,
+        DistanceFadeBegin = 220f,
         DistanceFadeLength = 60f,
     };
 

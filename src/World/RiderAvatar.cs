@@ -30,8 +30,8 @@ public partial class RiderAvatar : Node3D
     static readonly Vector3 Chest = new(0, 1.33f, -0.17f);
     static readonly Vector3 HeadPos = new(0, 1.5f, -0.33f);
 
-    StandardMaterial3D _frameMat, _accentMat, _dimMat, _tailMat;
-    ShaderMaterial _suitMat, _rubberMat;
+    StandardMaterial3D _accentMat, _dimMat, _tailMat;
+    ShaderMaterial _frameMat, _suitMat, _rubberMat;
     Node3D _rig, _front, _rear, _spider, _upper;
     MeshInstance3D _torso;
     readonly MeshInstance3D[] _deltoid = new MeshInstance3D[2];
@@ -52,7 +52,9 @@ public partial class RiderAvatar : Node3D
         _rig = new Node3D();
         AddChild(_rig);
 
-        _frameMat = Meshes.Glow(new Color(0.1f, 0.9f, 1f), 2.2f);
+        // Glossy candy-paint frame with glowing pinstripes.
+        _frameMat = new ShaderMaterial { Shader = Shaders.Paint };
+        _frameMat.SetShaderParameter("color", new Color(0.1f, 0.9f, 1f));
         _accentMat = Meshes.Glow(new Color(0.1f, 0.9f, 1f), 3.5f);
         _dimMat = Meshes.Glow(new Color(0.1f, 0.9f, 1f), 0.7f);
         _tailMat = Meshes.Glow(new Color(1f, 0.08f, 0.12f), 5f);
@@ -91,7 +93,7 @@ public partial class RiderAvatar : Node3D
 
     public void SetColors(Color primary, Color secondary)
     {
-        _frameMat.Emission = primary;
+        _frameMat.SetShaderParameter("color", primary);
         _accentMat.Emission = primary;
         _dimMat.Emission = primary;
         _suitMat.SetShaderParameter("rim_color", secondary);
