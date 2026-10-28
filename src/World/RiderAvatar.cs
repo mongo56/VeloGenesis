@@ -4,23 +4,26 @@ using Godot;
 namespace VeloGenesis.World;
 
 /// <summary>
-/// Neon gravel bike and rider with generated organic body shapes. Legs and arms use two-bone IK, cranks turn with
+/// Gravel bike and rider with generated organic body shapes. Legs and arms use two-bone IK, cranks turn with
 /// cadence, wheels spin with speed and the upper body sways slightly with each pedal stroke.
 /// Local space: -Z forward, +X right, +Y up, origin on the ground under the bottom bracket.
 /// </summary>
 public partial class RiderAvatar : Node3D
 {
-    // Gravel bike geometry (≈56 cm frame, 700x42 tyres)
-    const float WheelR = 0.355f, TyreW = 0.042f, RimDepth = 0.05f, Crank = 0.1725f;
+    // Modern gravel race geometry (≈56 cm, 700x45 tan-wall tyres): steeply sloping top tube,
+    // dropped seat stays, long exposed seatpost, 415 mm stays, ≈1055 mm wheelbase.
+    const float WheelR = 0.36f, TyreW = 0.045f, RimDepth = 0.05f, Crank = 0.1725f;
     /// <summary>Stem length (steerer to bar centre), metres.</summary>
     const float Stem = 0.08f;
-    static readonly Vector3 BB = new(0, 0.28f, 0);
-    static readonly Vector3 SeatCluster = new(0, 0.8f, 0.155f);
-    static readonly Vector3 HeadTop = new(0, 0.885f, -0.47f);
-    static readonly Vector3 HeadBottom = new(0, 0.72f, -0.515f);
-    static readonly Vector3 RearHub = new(0, WheelR, 0.43f);
-    static readonly Vector3 FrontHub = new(0, WheelR, -0.605f);
-    static readonly Vector3 SteererTop = new(0, 0.905f, -0.475f);
+    static readonly Vector3 BB = new(0, 0.29f, 0);
+    static readonly Vector3 SeatTubeTop = new(0, 0.81f, 0.117f);
+    static readonly Vector3 SeatCluster = new(0, 0.77f, 0.108f);
+    static readonly Vector3 SeatStayJoin = new(0, 0.645f, 0.08f);
+    static readonly Vector3 HeadTop = new(0, 0.883f, -0.425f);
+    static readonly Vector3 HeadBottom = new(0, 0.682f, -0.507f);
+    static readonly Vector3 RearHub = new(0, WheelR, 0.415f);
+    static readonly Vector3 FrontHub = new(0, WheelR, -0.64f);
+    static readonly Vector3 SteererTop = new(0, 0.91f, -0.414f);
     static readonly Vector3 BarClamp = SteererTop + new Vector3(0, Stem * 0.17f, -Stem * 0.985f); // -10° stem
     static readonly Vector3 HoodOffset = new(0.207f, 0.022f, -0.068f);
 
@@ -30,8 +33,13 @@ public partial class RiderAvatar : Node3D
     static readonly Vector3 Chest = new(0, 1.33f, -0.17f);
     static readonly Vector3 HeadPos = new(0, 1.5f, -0.33f);
 
-    StandardMaterial3D _accentMat, _dimMat, _tailMat;
-    ShaderMaterial _frameMat, _suitMat, _rubberMat;
+    static readonly Color Skin = new(0.56f, 0.37f, 0.26f);
+    static readonly Color Tee = new(0.8f, 0.58f, 0.07f);
+    static readonly Color Shorts = new(0.03f, 0.03f, 0.035f);
+    static readonly Color White = new(0.86f, 0.87f, 0.89f);
+
+    StandardMaterial3D _decalMat, _tailMat, _carbonMat, _steelMat, _spokeMat, _helmetMat, _lensMat, _shoeMat, _ventMat;
+    ShaderMaterial _frameMat, _rubberMat, _tyreMat, _skinMat, _teeMat, _shortsMat, _torsoMat, _shinMat;
     Node3D _rig, _front, _rear, _spider, _upper;
     MeshInstance3D _torso;
     readonly MeshInstance3D[] _deltoid = new MeshInstance3D[2];
@@ -47,31 +55,94 @@ public partial class RiderAvatar : Node3D
 
     public override void _Ready()
     {
-        _tube ??= new CylinderMesh { TopRadius = 1f, BottomRadius = 1f, Height = 1f, RadialSegments = 10, Rings = 1 };
+        _tube ??= new CylinderMesh { TopRadius = 1f, BottomRadius = 1f, Height = 1f, RadialSegments = 12, Rings = 1 };
         _box ??= new BoxMesh { Size = Vector3.One };
         _rig = new Node3D();
         AddChild(_rig);
 
-        // Glossy candy-paint frame with glowing pinstripes.
+        // Bike: matte sage frame with a thin route-coloured pinstripe, black finishing kit,
+        // deep carbon rims, tan-wall gravel tyres.
         _frameMat = new ShaderMaterial { Shader = Shaders.Paint };
         _frameMat.SetShaderParameter("color", new Color(0.1f, 0.9f, 1f));
-        _accentMat = Meshes.Glow(new Color(0.1f, 0.9f, 1f), 3.5f);
-        _dimMat = Meshes.Glow(new Color(0.1f, 0.9f, 1f), 0.7f);
         _tailMat = Meshes.Glow(new Color(1f, 0.08f, 0.12f), 5f);
-        _suitMat = new ShaderMaterial { Shader = Shaders.Rim };
-        // Matte fabric kit with a soft coloured rim light.
-        _suitMat.SetShaderParameter("rim", 1.1f);
-        _suitMat.SetShaderParameter("body_color", new Color(0.06f, 0.045f, 0.09f));
-        _suitMat.SetShaderParameter("metallic", 0.05f);
-        _suitMat.SetShaderParameter("roughness", 0.65f);
         _rubberMat = new ShaderMaterial { Shader = Shaders.Rim };
         _rubberMat.SetShaderParameter("rim_color", new Color(0.35f, 0.38f, 0.5f));
-        _rubberMat.SetShaderParameter("rim", 0.9f);
-        _rubberMat.SetShaderParameter("body_color", new Color(0.012f, 0.012f, 0.016f));
+        _rubberMat.SetShaderParameter("rim", 0.6f);
+        _rubberMat.SetShaderParameter("body_color", new Color(0.015f, 0.015f, 0.018f));
+        _tyreMat = new ShaderMaterial { Shader = Shaders.Tyre };
+        _carbonMat = new StandardMaterial3D { AlbedoColor = new Color(0.025f, 0.025f, 0.03f), Metallic = 0.3f, Roughness = 0.22f, ClearcoatEnabled = true, Clearcoat = 1f };
+        _steelMat = new StandardMaterial3D { AlbedoColor = new Color(0.7f, 0.7f, 0.74f), Metallic = 1f, Roughness = 0.25f };
+        _decalMat = new StandardMaterial3D { AlbedoColor = new Color(0.78f, 0.79f, 0.8f), Roughness = 0.45f, EmissionEnabled = true, Emission = new Color(0.8f, 0.82f, 0.85f), EmissionEnergyMultiplier = 0.12f };
+        _spokeMat = new StandardMaterial3D { AlbedoColor = new Color(0.08f, 0.08f, 0.09f), Metallic = 0.8f, Roughness = 0.35f };
+
+        // Rider: white vented helmet, mirrored gold shades, loose yellow tee, black baggy shorts,
+        // tall white socks and white shoes.
+        _skinMat = Kit(Skin, Skin, 100f, 0.55f, 0.55f);
+        _teeMat = Kit(Tee, Tee, 100f, 0.85f, 0.85f);
+        _shortsMat = Kit(Shorts, Shorts, 100f, 0.8f, 0.8f);
+        // Torso: shorts waistband below the tee hem.
+        _torsoMat = Kit(Shorts, Tee, 0.06f, 0.8f, 0.85f);
+        // Shin: skin from the knee, then the sock.
+        _shinMat = Kit(Skin, White, 0.2f, 0.55f, 0.75f);
+        _helmetMat = new StandardMaterial3D { AlbedoColor = White, Roughness = 0.28f, ClearcoatEnabled = true, Clearcoat = 0.8f };
+        _ventMat = new StandardMaterial3D { AlbedoColor = new Color(0.02f, 0.02f, 0.025f), Roughness = 0.6f };
+        _lensMat = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(1f, 0.62f, 0.18f), Metallic = 1f, Roughness = 0.06f,
+            EmissionEnabled = true, Emission = new Color(1f, 0.45f, 0.1f), EmissionEnergyMultiplier = 0.5f,
+        };
+        _shoeMat = new StandardMaterial3D { AlbedoColor = White, Roughness = 0.45f };
 
         BuildBike();
         BuildRider();
+        AddFillLights();
         Pose(0);
+    }
+
+    /// <summary>Render layer used only by the avatar, so its fill lights don't light the world.</summary>
+    const uint AvatarLayer = 1u << 9;
+    readonly System.Collections.Generic.List<OmniLight3D> _fill = new();
+
+    /// <summary>
+    /// Soft neutral key and fill that only reach the rider and bike, so the kit keeps its real
+    /// colours (yellow tee, white helmet, sage frame) under the magenta sunset.
+    /// </summary>
+    void AddFillLights()
+    {
+        void Layer(Node n)
+        {
+            if (n is GeometryInstance3D g) g.Layers |= AvatarLayer;
+            foreach (var c in n.GetChildren()) Layer(c);
+        }
+        Layer(this);
+        foreach (var (pos, energy) in new[] { (new Vector3(-0.9f, 2.4f, 1.8f), 1.5f), (new Vector3(1.2f, 1.8f, -1.6f), 0.8f) })
+        {
+            var l = new OmniLight3D
+            {
+                Position = pos,
+                LightColor = new Color(1f, 0.95f, 0.88f),
+                LightEnergy = energy,
+                LightSpecular = 0.4f,
+                LightVolumetricFogEnergy = 0f,
+                OmniRange = 4.5f,
+                OmniAttenuation = 0.6f,
+                LightCullMask = AvatarLayer,
+                ShadowEnabled = false,
+            };
+            AddChild(l);
+            _fill.Add(l);
+        }
+    }
+
+    static ShaderMaterial Kit(Color a, Color b, float split, float roughA, float roughB)
+    {
+        var m = new ShaderMaterial { Shader = Shaders.Kit };
+        m.SetShaderParameter("color_a", a);
+        m.SetShaderParameter("color_b", b);
+        m.SetShaderParameter("split", split);
+        m.SetShaderParameter("rough_a", roughA);
+        m.SetShaderParameter("rough_b", roughB);
+        return m;
     }
 
     /// <summary>Turns the whole bike and rider into a translucent hologram (ghost racer).</summary>
@@ -79,6 +150,8 @@ public partial class RiderAvatar : Node3D
     {
         var mat = new ShaderMaterial { Shader = Shaders.Ghost };
         mat.SetShaderParameter("color", color);
+        foreach (var l in _fill) l.QueueFree();
+        _fill.Clear();
         void Apply(Node n)
         {
             if (n is GeometryInstance3D g)
@@ -94,9 +167,8 @@ public partial class RiderAvatar : Node3D
     public void SetColors(Color primary, Color secondary)
     {
         _frameMat.SetShaderParameter("color", primary);
-        _accentMat.Emission = primary;
-        _dimMat.Emission = primary;
-        _suitMat.SetShaderParameter("rim_color", secondary);
+        foreach (var m in new[] { _skinMat, _teeMat, _shortsMat, _torsoMat, _shinMat })
+            m.SetShaderParameter("rim_color", secondary);
     }
 
     // ---------------------------------------------------------------- bike
@@ -106,23 +178,28 @@ public partial class RiderAvatar : Node3D
         _rear = Wheel(RearHub, true);
         _front = Wheel(FrontHub, false);
 
-        // Main triangle: oversized down tube, sloping top tube.
-        Tube(BB, HeadBottom, 0.024f, _frameMat);
-        Tube(BB, SeatCluster, 0.017f, _frameMat);
-        Tube(SeatCluster, HeadTop, 0.016f, _frameMat);
-        Tube(HeadBottom + new Vector3(0, -0.02f, 0.005f), HeadTop + new Vector3(0, 0.03f, -0.01f), 0.022f, _frameMat);
+        // Main triangle: fat down tube, slim top tube sloping down to a low seat cluster.
+        Tube(BB, HeadBottom + new Vector3(0, 0.01f, 0.005f), 0.03f, _frameMat);
+        Tube(BB + new Vector3(0, -0.01f, 0), SeatTubeTop, 0.018f, _frameMat);
+        Tube(SeatCluster, HeadTop + new Vector3(0, -0.025f, 0.012f), 0.017f, _frameMat);
+        Tube(HeadBottom + new Vector3(0, -0.025f, -0.01f), HeadTop + new Vector3(0, 0.025f, 0.01f), 0.026f, _frameMat);
+        // Bottom-bracket shell.
+        Part(_tube, _frameMat).Transform = new Transform3D(new Basis(Vector3.Back, Mathf.Pi / 2) * Basis.FromScale(new Vector3(0.026f, 0.085f, 0.026f)), BB);
         foreach (int s in new[] { -1, 1 })
         {
-            Tube(BB + new Vector3(s * 0.04f, 0, 0.03f), RearHub + new Vector3(s * 0.065f, 0, 0), 0.011f, _frameMat);
-            Tube(SeatCluster + new Vector3(s * 0.018f, -0.02f, 0.01f), RearHub + new Vector3(s * 0.065f, 0, 0), 0.009f, _frameMat);
-            // Fork legs with a little rake
-            Tube(HeadBottom + new Vector3(s * 0.05f, -0.03f, 0), FrontHub + new Vector3(s * 0.06f, 0.02f, -0.02f), 0.013f, _frameMat);
-            Tube(FrontHub + new Vector3(s * 0.06f, 0.02f, -0.02f), FrontHub + new Vector3(s * 0.06f, 0, 0), 0.011f, _frameMat);
+            Tube(BB + new Vector3(s * 0.035f, 0, 0.02f), RearHub + new Vector3(s * 0.066f, 0, 0), 0.012f, _frameMat);
+            // Dropped seat stays meet the seat tube well below the top tube.
+            Tube(SeatStayJoin + new Vector3(s * 0.016f, 0, 0.012f), RearHub + new Vector3(s * 0.064f, 0.012f, 0), 0.009f, _frameMat);
+            // Carbon fork legs, raked forward to the hub.
+            var crown = HeadBottom + new Vector3(s * 0.048f, -0.04f, 0.005f);
+            var mid = crown.Lerp(FrontHub + new Vector3(s * 0.062f, 0, 0), 0.55f) + new Vector3(0, 0, -0.012f);
+            Tube(crown, mid, 0.016f, _frameMat);
+            Tube(mid, FrontHub + new Vector3(s * 0.062f, 0.015f, 0), 0.013f, _frameMat);
         }
-        Tube(HeadBottom + new Vector3(-0.055f, -0.03f, 0), HeadBottom + new Vector3(0.055f, -0.03f, 0), 0.017f, _frameMat);
+        Tube(HeadBottom + new Vector3(-0.058f, -0.035f, 0), HeadBottom + new Vector3(0.058f, -0.035f, 0), 0.022f, _frameMat);
 
-        // Cockpit: stem and flared drop bars with hoods.
-        Tube(HeadTop, SteererTop, 0.018f, _rubberMat);            // spacers
+        // Cockpit: spacers, stem and flared drop bars with black tape and hoods.
+        Tube(HeadTop, SteererTop, 0.017f, _rubberMat);
         Tube(SteererTop + new Vector3(0, 0, 0.012f), BarClamp, 0.016f, _rubberMat);
         foreach (int s in new[] { -1, 1 })
         {
@@ -131,40 +208,33 @@ public partial class RiderAvatar : Node3D
             var pts = new[] { BarClamp, B(0.2f, 0, 0), B(0.205f, 0.004f, -0.05f), B(0.212f, -0.03f, -0.085f), B(0.226f, -0.095f, -0.075f), B(0.236f, -0.13f, -0.03f), B(0.245f, -0.125f, 0.035f) };
             for (int i = 0; i < pts.Length - 1; i++) Tube(pts[i], pts[i + 1], 0.0125f, _rubberMat);
             Box(B(0.206f, 0.01f, -0.035f), B(0.209f, 0.002f, -0.095f), new Vector3(0.032f, 0, 0.045f), _rubberMat); // hood
-            Tube(B(0.209f, -0.01f, -0.097f), B(0.22f, -0.12f, -0.112f), 0.007f, _dimMat);                          // lever
+            Tube(B(0.209f, -0.01f, -0.097f), B(0.22f, -0.12f, -0.112f), 0.007f, _rubberMat);                       // lever
         }
 
-        // Seatpost, saddle, saddle bag + blinking tail light.
-        var clamp = new Vector3(0, 0.975f, 0.205f);
-        Tube(SeatCluster, clamp, 0.0135f, _rubberMat);
-        Box(new Vector3(0, 0.995f, 0.29f), new Vector3(0, 0.99f, 0.03f), new Vector3(0.13f, 0, 0.035f), _rubberMat);
-        Box(new Vector3(0, 0.995f, 0.29f), new Vector3(0, 0.995f, 0.1f), new Vector3(0.012f, 0, 0.038f), _dimMat);
-        Box(new Vector3(0, 0.93f, 0.36f), new Vector3(0, 0.935f, 0.23f), new Vector3(0.085f, 0, 0.075f), _rubberMat);
-        Box(new Vector3(0, 0.93f, 0.367f), new Vector3(0, 0.93f, 0.37f), new Vector3(0.045f, 0, 0.02f), _tailMat);
+        // Long exposed seatpost, slim saddle, small blinking tail light on the post.
+        var clamp = SeatTubeTop + (SeatTubeTop - BB).Normalized() * 0.18f;
+        Tube(SeatTubeTop + new Vector3(0, -0.02f, 0), clamp, 0.0135f, _rubberMat);
+        Box(new Vector3(0, clamp.Y + 0.02f, clamp.Z + 0.11f), new Vector3(0, clamp.Y + 0.015f, clamp.Z - 0.15f), new Vector3(0.13f, 0, 0.03f), _rubberMat);
+        var tail = SeatTubeTop + (clamp - SeatTubeTop) * 0.5f + new Vector3(0, 0, 0.018f);
+        Box(tail + new Vector3(0, -0.03f, 0), tail + new Vector3(0, 0.03f, 0), new Vector3(0.025f, 0, 0.012f), _tailMat);
 
-        // Frame bag (it's a gravel bike) with a glowing zip.
-        var bagA = SeatCluster + new Vector3(0, -0.075f, -0.06f);
-        var bagB = HeadTop + new Vector3(0, -0.1f, 0.11f);
-        Box(bagA, bagB, new Vector3(0.055f, 0, 0.11f), _rubberMat);
-        Box(bagA + new Vector3(0.029f, 0.035f, 0), bagB + new Vector3(0.029f, 0.035f, 0), new Vector3(0.004f, 0, 0.006f), _accentMat);
-
-        // Drivetrain: chainring + spider rotate with the cranks; chain to the cassette.
+        // Drivetrain (1x): chainring + spider rotate with the cranks; chain to the cassette.
         _spider = new Node3D { Position = BB + new Vector3(0.068f, 0, 0) };
         _rig.AddChild(_spider);
-        _spider.AddChild(new MeshInstance3D { Mesh = new TorusMesh { InnerRadius = 0.088f, OuterRadius = 0.104f, Rings = 32, RingSegments = 6 }, MaterialOverride = _accentMat, Rotation = new Vector3(0, 0, Mathf.Pi / 2) });
+        _spider.AddChild(new MeshInstance3D { Mesh = new TorusMesh { InnerRadius = 0.088f, OuterRadius = 0.104f, Rings = 40, RingSegments = 6 }, MaterialOverride = _steelMat, Rotation = new Vector3(0, 0, Mathf.Pi / 2) });
         for (int i = 0; i < 4; i++)
-            _spider.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.006f, 0.17f, 0.016f) }, MaterialOverride = _rubberMat, Rotation = new Vector3(i * Mathf.Pi / 4, 0, 0) });
+            _spider.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.008f, 0.17f, 0.018f) }, MaterialOverride = _rubberMat, Rotation = new Vector3(i * Mathf.Pi / 4, 0, 0) });
         var cog = new Vector3(0.068f, 0, 0);
-        Tube(BB + cog + new Vector3(0, 0.096f, 0), RearHub + cog + new Vector3(0, 0.045f, 0), 0.004f, _dimMat);
-        Tube(BB + cog + new Vector3(0, -0.096f, 0), RearHub + cog + new Vector3(0, -0.045f, 0), 0.004f, _dimMat);
-        var cass = new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 0.05f, BottomRadius = 0.05f, Height = 0.03f }, MaterialOverride = _rubberMat, Position = RearHub + cog, Rotation = new Vector3(0, 0, Mathf.Pi / 2) };
+        Tube(BB + cog + new Vector3(0, 0.096f, 0), RearHub + cog + new Vector3(0, 0.05f, 0), 0.004f, _steelMat);
+        Tube(BB + cog + new Vector3(0, -0.096f, 0), RearHub + cog + new Vector3(0, -0.05f, 0), 0.004f, _steelMat);
+        var cass = new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 0.026f, BottomRadius = 0.056f, Height = 0.04f }, MaterialOverride = _steelMat, Position = RearHub + cog, Rotation = new Vector3(0, 0, Mathf.Pi / 2) };
         _rig.AddChild(cass);
-        Box(RearHub + new Vector3(0.075f, -0.03f, 0.02f), RearHub + new Vector3(0.075f, -0.11f, 0.0f), new Vector3(0.012f, 0, 0.03f), _dimMat); // derailleur
+        Box(RearHub + new Vector3(0.078f, -0.02f, 0.02f), RearHub + new Vector3(0.078f, -0.12f, -0.005f), new Vector3(0.016f, 0, 0.035f), _rubberMat); // derailleur
 
         for (int s = 0; s < 2; s++)
         {
             _crankArm[s] = Tube(Vector3.Zero, Vector3.Up, 0.012f, _rubberMat);
-            _pedal[s] = Part(_box, _dimMat);
+            _pedal[s] = Part(_box, _rubberMat);
         }
     }
 
@@ -173,17 +243,18 @@ public partial class RiderAvatar : Node3D
         var w = new Node3D { Position = hub };
         _rig.AddChild(w);
         var side = new Vector3(0, 0, Mathf.Pi / 2);
-        w.AddChild(new MeshInstance3D { Mesh = new TorusMesh { InnerRadius = WheelR - TyreW, OuterRadius = WheelR, Rings = 48, RingSegments = 10 }, MaterialOverride = _rubberMat, Rotation = side });
-        // 50 mm deep carbon rim with a glowing decal band on both side walls.
+        w.AddChild(new MeshInstance3D { Mesh = new TorusMesh { InnerRadius = WheelR - TyreW, OuterRadius = WheelR, Rings = 64, RingSegments = 12 }, MaterialOverride = _tyreMat, Rotation = side });
+        // 50 mm deep carbon rim with a light decal band on both side walls.
         float rimOuter = WheelR - TyreW + 0.004f, rimInner = rimOuter - RimDepth;
-        _rimMesh ??= Meshes.Rim(rimInner, rimOuter, 0.026f);
-        _rimDecal ??= Meshes.Rim(rimInner + 0.02f, rimInner + 0.03f, 0.0275f);
-        w.AddChild(new MeshInstance3D { Mesh = _rimMesh, MaterialOverride = _rubberMat });
-        w.AddChild(new MeshInstance3D { Mesh = _rimDecal, MaterialOverride = _accentMat });
+        _rimMesh ??= Meshes.Rim(rimInner, rimOuter, 0.028f);
+        _rimDecal ??= Meshes.Rim(rimInner + 0.022f, rimInner + 0.028f, 0.0295f);
+        w.AddChild(new MeshInstance3D { Mesh = _rimMesh, MaterialOverride = _carbonMat });
+        w.AddChild(new MeshInstance3D { Mesh = _rimDecal, MaterialOverride = _decalMat });
         for (int i = 0; i < 12; i++)
-            w.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.003f, rimInner * 2f, 0.003f) }, MaterialOverride = _dimMat, Rotation = new Vector3(i * Mathf.Pi / 12f, 0, 0) });
+            w.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.0025f, rimInner * 2f, 0.0025f) }, MaterialOverride = _spokeMat, Rotation = new Vector3(i * Mathf.Pi / 12f, 0, 0) });
         w.AddChild(new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 0.022f, BottomRadius = 0.022f, Height = 0.11f }, MaterialOverride = _rubberMat, Rotation = side });
-        w.AddChild(new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = rear ? 0.07f : 0.08f, BottomRadius = rear ? 0.07f : 0.08f, Height = 0.004f, RadialSegments = 24 }, MaterialOverride = _dimMat, Rotation = side, Position = new Vector3(-0.055f, 0, 0) });
+        // Disc rotor on the left.
+        w.AddChild(new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = rear ? 0.07f : 0.08f, BottomRadius = rear ? 0.07f : 0.08f, Height = 0.003f, RadialSegments = 32 }, MaterialOverride = _steelMat, Rotation = side, Position = new Vector3(-0.055f, 0, 0) });
         return w;
     }
 
@@ -196,93 +267,82 @@ public partial class RiderAvatar : Node3D
         var bm = _bodyMeshes;
 
         // Torso: one contoured shape from the seat to the base of the neck (hips → waist → chest →
-        // shoulders). Local Y runs pelvis → chest, local Z points out of the rider's back.
-        _torso = Part(bm.Torso, _suitMat);
-        for (int i = 0; i < 6; i++)
-        {
-            float y0 = 0.05f + i * 0.065f, y1 = y0 + 0.05f;
-            float zz = Math.Max(bm.TorsoDepth((y0 + y1) / 2), 0.01f);
-            Child(_torso, _box, _accentMat, new Vector3(0, (y0 + y1) / 2, zz + 0.002f), new Vector3(0.016f, y1 - y0, 0.006f)); // spine stripe
-            foreach (int s in new[] { -1, 1 })
-            {
-                float xx = bm.TorsoWidth((y0 + y1) / 2);
-                Child(_torso, _box, _dimMat, new Vector3(s * (xx + 0.002f), (y0 + y1) / 2, 0), new Vector3(0.006f, y1 - y0, 0.02f)); // side panels
-            }
-        }
-        var collar = Child(_torso, new TorusMesh { InnerRadius = 0.088f, OuterRadius = 0.102f, Rings = 24, RingSegments = 6 }, _accentMat, new Vector3(0, 0.535f, 0), new Vector3(0.95f, 1, 0.78f));
+        // shoulders), cut a little loose for the tee. Local Y runs pelvis → chest.
+        _torso = Part(bm.Torso, _torsoMat);
+        Child(_torso, new TorusMesh { InnerRadius = 0.07f, OuterRadius = 0.082f, Rings = 24, RingSegments = 6 }, _teeMat, new Vector3(0, 0.548f, 0), new Vector3(0.95f, 1, 0.8f)); // crew neck
 
         // Head group rides on the chest.
         _upper = new Node3D();
         _rig.AddChild(_upper);
-        var neck = new MeshInstance3D { Mesh = bm.Neck, MaterialOverride = _suitMat };
+        var neck = new MeshInstance3D { Mesh = bm.Neck, MaterialOverride = _skinMat };
         _upper.AddChild(neck);
         OrientFrom(neck, Chest + new Vector3(0, 0.05f, -0.03f), HeadPos + new Vector3(0, -0.07f, 0.03f));
-        _upper.AddChild(new MeshInstance3D { Mesh = bm.Head, MaterialOverride = _suitMat, Transform = new Transform3D(new Basis(Vector3.Right, 0.25f), HeadPos) });
-        // Gravel / enduro helmet: deep shell tilted so it sits high over the brow and wraps low
-        // around the back of the head, plus a peak and big glowing vents.
-        var helmetCentre = HeadPos + new Vector3(0, 0.035f, 0.025f);
-        var helmetTilt = new Basis(Vector3.Right, 0.4f);
-        _upper.AddChild(new MeshInstance3D { Mesh = bm.Helmet, MaterialOverride = _rubberMat, Transform = new Transform3D(helmetTilt, helmetCentre) });
-        // Glowing rim line just above the lower edge.
-        _upper.AddChild(new MeshInstance3D
+        var headTilt = new Basis(Vector3.Right, 0.25f);
+        _upper.AddChild(new MeshInstance3D { Mesh = bm.Head, MaterialOverride = _skinMat, Transform = new Transform3D(headTilt, HeadPos) });
+
+        // Road / gravel helmet: rounded white shell sitting high over the brow, longer at the back,
+        // with dark vent channels running front to back.
+        var helmetCentre = HeadPos + new Vector3(0, 0.055f, 0.012f);
+        var helmetTilt = new Basis(Vector3.Right, 0.32f);
+        _upper.AddChild(new MeshInstance3D { Mesh = bm.Helmet, MaterialOverride = _helmetMat, Transform = new Transform3D(helmetTilt, helmetCentre) });
+        foreach (float dx in new[] { -0.07f, -0.035f, 0f, 0.035f, 0.07f })
         {
-            Mesh = new TorusMesh { InnerRadius = 0.97f, OuterRadius = 1.0f, Rings = 40, RingSegments = 4 },
-            MaterialOverride = _accentMat,
-            Transform = new Transform3D(helmetTilt * Basis.FromScale(new Vector3(0.124f, 0.6f, 0.147f)), helmetCentre + helmetTilt * new Vector3(0, -0.058f, 0)),
-        });
-        // Peak: a thin rounded plate over the brow, angled slightly down.
-        var peakBasis = new Basis(Vector3.Right, -0.22f);
-        _upper.AddChild(new MeshInstance3D
-        {
-            Mesh = new CylinderMesh { TopRadius = 0.105f, BottomRadius = 0.105f, Height = 0.01f, RadialSegments = 32 },
-            MaterialOverride = _rubberMat,
-            Transform = new Transform3D(peakBasis * Basis.FromScale(new Vector3(1f, 1f, 0.62f)), HeadPos + new Vector3(0, 0.07f, -0.125f)),
-        });
-        _upper.AddChild(new MeshInstance3D
-        {
-            Mesh = new TorusMesh { InnerRadius = 0.1f, OuterRadius = 0.108f, Rings = 32, RingSegments = 4 },
-            MaterialOverride = _accentMat,
-            Transform = new Transform3D(peakBasis * Basis.FromScale(new Vector3(1f, 0.6f, 0.62f)), HeadPos + new Vector3(0, 0.07f, -0.125f)),
-        });
-        foreach (float dx in new[] { -0.06f, -0.02f, 0.02f, 0.06f })
-        {
-            var vent = new MeshInstance3D { Mesh = _box, MaterialOverride = _accentMat };
+            var vent = new MeshInstance3D { Mesh = _box, MaterialOverride = _ventMat };
             _upper.AddChild(vent);
-            float top = 0.172f - dx * dx * 7f;
-            Orient(vent, HeadPos + new Vector3(dx, top + 0.005f, -0.06f), HeadPos + new Vector3(dx, top - 0.01f, 0.1f), new Vector3(0.016f, 1, 0.012f));
+            float top = 0.168f - dx * dx * 6f;
+            Orient(vent, HeadPos + new Vector3(dx, top - 0.012f, -0.1f), HeadPos + new Vector3(dx, top + 0.012f, 0.05f), new Vector3(0.012f, 1, 0.01f));
         }
-        // Wraparound visor band.
+        // Dark lower edge of the shell and two rear vents.
         _upper.AddChild(new MeshInstance3D
         {
-            Mesh = new TorusMesh { InnerRadius = 0.083f, OuterRadius = 0.097f, Rings = 32, RingSegments = 6 },
-            MaterialOverride = _accentMat,
-            Transform = new Transform3D(new Basis(Vector3.Right, 0.25f) * Basis.FromScale(new Vector3(1f, 1.4f, 1.15f)), HeadPos + new Vector3(0, 0.005f, -0.01f)),
+            Mesh = new TorusMesh { InnerRadius = 0.96f, OuterRadius = 1.0f, Rings = 40, RingSegments = 4 },
+            MaterialOverride = _ventMat,
+            Transform = new Transform3D(helmetTilt * Basis.FromScale(new Vector3(0.114f, 0.5f, 0.142f)), helmetCentre + helmetTilt * new Vector3(0, -0.05f, 0)),
         });
+        foreach (float dx in new[] { -0.04f, 0.04f })
+        {
+            var vent = new MeshInstance3D { Mesh = _box, MaterialOverride = _ventMat };
+            _upper.AddChild(vent);
+            Orient(vent, helmetCentre + helmetTilt * new Vector3(dx, 0.05f, 0.128f), helmetCentre + helmetTilt * new Vector3(dx, 0.0f, 0.142f), new Vector3(0.022f, 1, 0.012f));
+        }
+        // Mirrored wraparound sport glasses at eye level, below the helmet's brow: lens, black
+        // top frame, and arms running back to the ears.
+        var eyes = new Transform3D(headTilt, HeadPos + headTilt * new Vector3(0, -0.01f, 0));
+        _upper.AddChild(new MeshInstance3D { Mesh = bm.Lens, MaterialOverride = _lensMat, Transform = eyes });
+        _upper.AddChild(new MeshInstance3D { Mesh = bm.LensFrame, MaterialOverride = _rubberMat, Transform = eyes });
+        foreach (int sd in new[] { -1, 1 })
+        {
+            var arm = new MeshInstance3D { Mesh = _box, MaterialOverride = _rubberMat };
+            _upper.AddChild(arm);
+            var hinge = eyes * BodyMeshes.LensPoint(sd * BodyMeshes.LensArc, 0.016f);
+            var ear = eyes * new Vector3(sd * 0.09f, -0.008f, 0.04f);
+            Orient(arm, hinge, ear, new Vector3(0.007f, 1, 0.014f));
+        }
 
         for (int s = 0; s < 2; s++)
         {
-            _deltoid[s] = Part(bm.Deltoid, _suitMat);
-            _thigh[s] = Part(bm.Thigh, _suitMat);
-            Child(_thigh[s], bm.Band(0.066f), _accentMat, new Vector3(0, Thigh * 0.8f, 0), Vector3.One);      // shorts gripper
-            _shin[s] = Part(bm.Shin, _suitMat);
-            Child(_shin[s], bm.Band(0.042f), _dimMat, new Vector3(0, Shin * 0.82f, 0), Vector3.One);         // sock top
-            _shoe[s] = Part(bm.Shoe, _rubberMat);
-            Child(_shoe[s], _box, _accentMat, new Vector3(0, 0.14f, -0.042f), new Vector3(0.07f, 0.24f, 0.008f)); // glowing sole
-            Child(_shoe[s], _box, _dimMat, new Vector3(0, 0.12f, 0.04f), new Vector3(0.075f, 0.018f, 0.006f));    // strap
-            _upperArm[s] = Part(bm.UpperArm, _suitMat);
-            Child(_upperArm[s], bm.Band(0.054f), _accentMat, new Vector3(0, UpperArm * 0.55f, 0), Vector3.One); // sleeve cuff
-            _forearm[s] = Part(bm.Forearm, _suitMat);
-            _glove[s] = Part(bm.Glove, _dimMat);
+            _deltoid[s] = Part(bm.Deltoid, _teeMat);
+            // Bare legs: baggy shorts over the thigh, white sock on the shin.
+            _thigh[s] = Part(bm.Thigh, _skinMat);
+            Child(_thigh[s], bm.ShortsLeg, _shortsMat, Vector3.Zero, Vector3.One);
+            _shin[s] = Part(bm.Shin, _shinMat);
+            _shoe[s] = Part(bm.Shoe, _shoeMat);
+            Child(_shoe[s], _box, _rubberMat, new Vector3(0, 0.14f, -0.04f), new Vector3(0.072f, 0.25f, 0.01f));   // sole
+            Child(_shoe[s], _box, _rubberMat, new Vector3(0.03f, 0.12f, 0.035f), new Vector3(0.02f, 0.02f, 0.012f)); // dial
+            // Bare arms with short tee sleeves; black short-finger gloves.
+            _upperArm[s] = Part(bm.UpperArm, _skinMat);
+            Child(_upperArm[s], bm.Sleeve, _teeMat, Vector3.Zero, Vector3.One);
+            _forearm[s] = Part(bm.Forearm, _skinMat);
+            _glove[s] = Part(bm.Glove, _rubberMat);
         }
     }
 
     /// <summary>Generated body meshes, shared by all avatars.</summary>
     sealed class BodyMeshes
     {
-        public readonly Func<float, float> TorsoWidth = Meshes.Profile(-0.12f, 0, 0f, 0.168f, 0.17f, 0.13f, 0.32f, 0.16f, 0.41f, 0.175f, 0.48f, 0.13f, 0.54f, 0.075f, 0.59f, 0);
-        public readonly Func<float, float> TorsoDepth = Meshes.Profile(-0.12f, 0, 0f, 0.12f, 0.17f, 0.1f, 0.32f, 0.125f, 0.41f, 0.11f, 0.48f, 0.09f, 0.54f, 0.065f, 0.59f, 0);
-        public readonly ArrayMesh Torso, Neck, Head, Helmet, Thigh, Shin, UpperArm, Forearm, Glove, Shoe, Deltoid;
-        readonly System.Collections.Generic.Dictionary<float, Mesh> _bands = new();
+        public readonly Func<float, float> TorsoWidth = Meshes.Profile(-0.12f, 0, 0f, 0.175f, 0.17f, 0.142f, 0.32f, 0.17f, 0.41f, 0.185f, 0.48f, 0.14f, 0.54f, 0.08f, 0.59f, 0);
+        public readonly Func<float, float> TorsoDepth = Meshes.Profile(-0.12f, 0, 0f, 0.125f, 0.17f, 0.11f, 0.32f, 0.135f, 0.41f, 0.12f, 0.48f, 0.095f, 0.54f, 0.068f, 0.59f, 0);
+        public readonly ArrayMesh Torso, Neck, Head, Helmet, Lens, LensFrame, Thigh, ShortsLeg, Shin, UpperArm, Sleeve, Forearm, Glove, Shoe, Deltoid;
 
         public BodyMeshes()
         {
@@ -290,26 +350,49 @@ public partial class RiderAvatar : Node3D
             Neck = Meshes.Limb(0.11f, 0.05f, 0.046f);
             Head = Meshes.Lathe(Meshes.Profile(-0.11f, 0, -0.06f, 0.07f, 0f, 0.083f, 0.06f, 0.078f, 0.115f, 0),
                                 Meshes.Profile(-0.11f, 0, -0.06f, 0.085f, 0f, 0.1f, 0.06f, 0.092f, 0.115f, 0), -0.11f, 0.115f, 18, 18);
-            // Domed enduro shell (vertical axis): width rx, front-back depth rz.
-            Helmet = Meshes.Lathe(Meshes.Profile(-0.09f, 0, -0.07f, 0.118f, 0f, 0.13f, 0.07f, 0.118f, 0.12f, 0.075f, 0.145f, 0),
-                                  Meshes.Profile(-0.09f, 0, -0.07f, 0.142f, 0f, 0.153f, 0.07f, 0.135f, 0.12f, 0.085f, 0.145f, 0), -0.09f, 0.145f, 22, 24);
+            // Rounded road-helmet shell (vertical axis): width rx, front-back depth rz, a touch
+            // longer than the head so it wraps the back.
+            Helmet = Meshes.Lathe(Meshes.Profile(-0.07f, 0, -0.055f, 0.112f, 0f, 0.124f, 0.06f, 0.112f, 0.105f, 0.075f, 0.135f, 0),
+                                  Meshes.Profile(-0.07f, 0, -0.055f, 0.14f, 0f, 0.152f, 0.06f, 0.138f, 0.105f, 0.09f, 0.135f, 0), -0.07f, 0.135f, 24, 28);
+            Lens = BuildLens(-0.024f, 0.02f, true);
+            LensFrame = BuildLens(0.016f, 0.024f, false, 0.003f);
             Thigh = Meshes.Limb(RiderAvatar.Thigh, 0.086f, 0.062f, 0.35f, 0.01f, 1.06f);
+            // Baggy shorts leg ending a hand's width above the knee.
+            ShortsLeg = Meshes.Limb(0.33f, 0.104f, 0.088f, 0.4f, 0.006f, 1.05f);
             Shin = Meshes.Limb(RiderAvatar.Shin, 0.056f, 0.036f, 0.28f, 0.013f, 1.12f);
-            UpperArm = Meshes.Limb(RiderAvatar.UpperArm, 0.058f, 0.044f, 0.45f, 0.006f);
-            Forearm = Meshes.Limb(RiderAvatar.Forearm, 0.046f, 0.031f, 0.25f, 0.007f);
+            UpperArm = Meshes.Limb(RiderAvatar.UpperArm, 0.054f, 0.042f, 0.45f, 0.006f);
+            Sleeve = Meshes.Limb(0.14f, 0.07f, 0.064f, 0.5f, 0.002f);
+            Forearm = Meshes.Limb(RiderAvatar.Forearm, 0.044f, 0.03f, 0.25f, 0.007f);
             // Shoulder cap that bridges torso and upper arm.
-            Deltoid = Meshes.Limb(0.12f, 0.063f, 0.051f, 0.3f, 0.004f, 1.1f);
+            Deltoid = Meshes.Limb(0.12f, 0.068f, 0.06f, 0.3f, 0.004f, 1.1f);
             Glove = Meshes.Limb(0.06f, 0.034f, 0.03f, 0.5f, 0.004f, 0.75f);
             Shoe = Meshes.Lathe(Meshes.Profile(0f, 0, 0.03f, 0.04f, 0.15f, 0.048f, 0.24f, 0.036f, 0.28f, 0),
                                 Meshes.Profile(0f, 0, 0.03f, 0.045f, 0.12f, 0.04f, 0.24f, 0.025f, 0.28f, 0), 0f, 0.28f, 16, 14);
         }
 
-        /// <summary>Thin glowing ring that wraps a limb of the given radius (cuffs, grippers).</summary>
-        public Mesh Band(float radius)
+        public const float LensArc = 1.38f;
+        const float LensRx = 0.094f, LensRz = 0.11f;
+
+        /// <summary>Point on the lens ellipse around the front of the face (−Z), head-local.</summary>
+        public static Vector3 LensPoint(float a, float y, float grow = 0f) => new(MathF.Sin(a) * (LensRx + grow), y, -MathF.Cos(a) * (LensRz + grow));
+
+        /// <summary>
+        /// Wraparound band between heights y0 and y1 around the front of the face. With
+        /// <paramref name="taper"/> the bottom edge rises towards the temples like a sport lens.
+        /// </summary>
+        static ArrayMesh BuildLens(float y0, float y1, bool taper, float grow = 0f)
         {
-            if (!_bands.TryGetValue(radius, out var m))
-                _bands[radius] = m = new TorusMesh { InnerRadius = radius - 0.004f, OuterRadius = radius + 0.006f, Rings = 24, RingSegments = 6 };
-            return m;
+            var st = new SurfaceTool();
+            st.Begin(Mesh.PrimitiveType.Triangles);
+            const int segs = 24;
+            for (int i = 0; i < segs; i++)
+            {
+                float a0 = -LensArc + 2 * LensArc * i / segs, a1 = -LensArc + 2 * LensArc * (i + 1) / segs;
+                Vector3 N(float a) => new Vector3(MathF.Sin(a) / LensRx, 0, -MathF.Cos(a) / LensRz).Normalized();
+                float B(float a) => taper ? y0 + (y1 - y0) * 0.35f * MathF.Pow(MathF.Abs(a) / LensArc, 2f) : y0;
+                Meshes.Quad(st, LensPoint(a0, B(a0), grow), LensPoint(a1, B(a1), grow), LensPoint(a1, y1, grow), LensPoint(a0, y1, grow), (N(a0) + N(a1)).Normalized());
+            }
+            return st.Commit();
         }
     }
 
@@ -376,14 +459,20 @@ public partial class RiderAvatar : Node3D
             var crankDir = new Vector3(0, -MathF.Sin(ca), -MathF.Cos(ca));
             var axle = BB + new Vector3(side * 0.085f, 0, 0) + crankDir * Crank;
             PlaceTube(_crankArm[i], BB + new Vector3(side * 0.08f, 0, 0), axle, 0.012f);
-            _pedal[i].Transform = new Transform3D(Basis.FromScale(new Vector3(0.085f, 0.018f, 0.075f)), axle + new Vector3(side * 0.045f, 0, 0));
+
+            // Ankling: the foot pivots on the pedal spindle (ball of the foot) instead of staying
+            // flat. Toe-down angle ≈ 5° pushing over 3 o'clock, 20° at the bottom, 28° pulling
+            // back through 9 o'clock and 13° coming over the top; heels drop a bit when standing.
+            float toeDown = Mathf.DegToRad(16.5f - 11.5f * MathF.Cos(ca) + 3.5f * MathF.Sin(ca) - 5f * _stand);
+            var pitch = new Basis(Vector3.Right, -toeDown);
+            _pedal[i].Transform = new Transform3D(pitch * Basis.FromScale(new Vector3(0.085f, 0.018f, 0.075f)), axle + new Vector3(side * 0.045f, 0, 0));
 
             // Shoe clipped to the pedal, ankle behind and above the axle.
             var foot = axle + new Vector3(side * 0.04f, 0, 0);
-            var ankle = foot + new Vector3(0, 0.075f, 0.055f);
-            var toe = foot + new Vector3(0, 0.025f, -0.12f);
-            var heel = ankle + new Vector3(0, -0.035f, 0.05f);
-            OrientFrom(_shoe[i], heel + new Vector3(0, -0.005f, 0.02f), toe, (toe - heel).Length() / 0.26f);
+            var ankle = foot + pitch * new Vector3(0, 0.075f, 0.055f);
+            var toe = foot + pitch * new Vector3(0, 0.025f, -0.12f);
+            var heel = ankle + pitch * new Vector3(0, -0.035f, 0.05f);
+            OrientFrom(_shoe[i], heel + pitch * new Vector3(0, -0.005f, 0.02f), toe, (toe - heel).Length() / 0.26f);
 
             // Hip joint a few cm above the saddle and forward, roughly where the femur head is.
             var hip = pelvis + new Vector3(side * 0.09f, 0f, -0.03f);

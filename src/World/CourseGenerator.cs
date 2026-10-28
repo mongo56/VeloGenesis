@@ -37,6 +37,52 @@ public class CourseGenerator
         return seg;
     }
 
+    /// <summary>
+    /// Visual-only road leading up to the start line so the world doesn't end behind the rider.
+    /// Seen from its far end it rises out of the horizon grid (<paramref name="depth"/> metres
+    /// below the start) over <paramref name="rise"/> metres, then runs level into the start.
+    /// Uses its own noise stream and no id, so the ridden course is unchanged.
+    /// </summary>
+    public Segment CreateLeadIn(Segment start, float length = 700f, float rise = 380f, float depth = 70f)
+    {
+        int n = (int)(length / Segment.Ds) + 1;
+        var seg = new Segment
+        {
+            Id = -1,
+            Kind = SectorKind.Start,
+            Name = "Lead-in",
+            StartDist = -(n - 1) * Segment.Ds,
+            Pos = new Vector3[n],
+            Heading = new float[n],
+            Grade = new float[n],
+            Curvature = new float[n],
+            Primary = start.Primary,
+            Secondary = start.Secondary,
+            MountainAmp = start.MountainAmp,
+            LeadInRise = rise,
+        };
+
+        // Walk backwards from the start line with a gentle wander, storing samples front to back.
+        int curveSeed = WorldSeed ^ 0x5EED1E;
+        var p = start.Pos[0];
+        float h = start.Heading[0] + MathF.PI;
+        for (int j = 0; j < n; j++)
+        {
+            int i = n - 1 - j;
+            float y = start.Pos[0].Y - depth * (1f - Noise.SmoothStep(0, rise, i * Segment.Ds));
+            seg.Pos[i] = new Vector3(p.X, y, p.Z);
+            seg.Heading[i] = h - MathF.PI;
+            float back = j * Segment.Ds;
+            float k = Noise.Value1(back / 380f, curveSeed) * MaxCurvature * 0.7f * Noise.SmoothStep(0, 120, back);
+            float hMid = h + k * Segment.Ds * 0.5f;
+            h += k * Segment.Ds;
+            p += Segment.ForwardOf(hMid) * Segment.Ds;
+        }
+        for (int i = 0; i < n - 1; i++) seg.Grade[i] = (seg.Pos[i + 1].Y - seg.Pos[i].Y) / Segment.Ds * 100f;
+        seg.Grade[n - 1] = start.Grade[0];
+        return seg;
+    }
+
     /// <summary>Creates the two branches leaving the end of <paramref name="parent"/>.</summary>
     public Segment[] CreateFork(Segment parent, float gainSoFar)
     {

@@ -38,18 +38,18 @@ public static class PropMeshes
     public static ArrayMesh LampPost => _lamp ??= BuildLamp();
 
     /// <summary>Where the lamp's light bar sits, in the lamp's local space.</summary>
-    public static readonly Vector3 LampHead = new(0.75f, 2.42f, 0);
+    public static readonly Vector3 LampHead = new(0.85f, 4.22f, 0);
 
     static ArrayMesh BuildLamp()
     {
         var metal = Begin();
         var glow = Begin();
-        AddBox(metal, new Vector3(0, 0.1f, 0), new Vector3(0.3f, 0.2f, 0.3f));
-        AddBox(metal, new Vector3(0, 1.35f, 0), new Vector3(0.09f, 2.5f, 0.09f));
-        AddBox(glow, new Vector3(0.05f, 1.3f, 0), new Vector3(0.014f, 2.0f, 0.03f));
-        AddBox(metal, new Vector3(0.36f, 2.56f, 0), new Vector3(0.8f, 0.07f, 0.09f));
-        AddBox(metal, new Vector3(0.75f, 2.5f, 0), new Vector3(0.52f, 0.07f, 0.17f));
-        AddBox(glow, new Vector3(0.75f, 2.45f, 0), new Vector3(0.48f, 0.05f, 0.19f));
+        AddBox(metal, new Vector3(0, 0.12f, 0), new Vector3(0.32f, 0.24f, 0.32f));
+        AddBox(metal, new Vector3(0, 2.2f, 0), new Vector3(0.1f, 4.2f, 0.1f));
+        AddBox(glow, new Vector3(0.055f, 2.1f, 0), new Vector3(0.014f, 3.5f, 0.03f));
+        AddBox(metal, new Vector3(0.42f, 4.36f, 0), new Vector3(0.94f, 0.08f, 0.1f));
+        AddBox(metal, new Vector3(0.85f, 4.3f, 0), new Vector3(0.56f, 0.08f, 0.18f));
+        AddBox(glow, new Vector3(0.85f, 4.25f, 0), new Vector3(0.5f, 0.05f, 0.2f));
         return Commit(metal, Metal, glow, Trim);
     }
 

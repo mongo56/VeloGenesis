@@ -34,6 +34,11 @@ public class Segment
     public float[] Curvature; // rad / m
 
     public float Gain, Drop, MaxGrade;
+    /// <summary>
+    /// > 0 only for the visual lead-in behind the start: over this many metres from its far end
+    /// the road and landscape rise out of the horizon grid (no props, rails or lamps there).
+    /// </summary>
+    public float LeadInRise;
     public float MountainAmp = 1f;
 
     public float[] Gels = Array.Empty<float>();

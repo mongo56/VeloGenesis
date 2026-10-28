@@ -79,6 +79,7 @@ public static class WorldBuilder
         g.Rails = BuildRails(seg, sibling, g.RailPosts);
         var rng = new Random(seg.Id * 7919 + worldSeed);
         BuildProps(seg, sibling, q, worldSeed, rng, g);
+        if (seg.LeadInRise > 0) ClearRisingPart(seg, g);
         return g;
     }
 
@@ -158,6 +159,7 @@ public static class WorldBuilder
 
         bool Present(int i, int sign)
         {
+            if (i * Segment.Ds < seg.LeadInRise) return false;
             if (sibling == null || sign != innerSign || i >= sibling.Count) return true;
             var a = seg.Pos[i];
             var b = sibling.Pos[i];
@@ -257,6 +259,9 @@ public static class WorldBuilder
                 }
                 var w = p + r * lat;
                 float y = TerrainHeight(baseY, latAbs, w.X, w.Z, amp, seed);
+                // Lead-in: the landscape flattens into the horizon grid towards its far end.
+                if (seg.LeadInRise > 0)
+                    y = baseY - 0.35f + (y - baseY + 0.35f) * Noise.SmoothStep(0, seg.LeadInRise, s);
                 d.V[ri * nc + ci] = new Vector3(w.X, y, w.Z);
                 d.UV[ri * nc + ci] = new Vector2(latAbs, s);
             }
@@ -287,6 +292,29 @@ public static class WorldBuilder
                 idx[k++] = a; idx[k++] = cc; idx[k++] = b;
                 idx[k++] = b; idx[k++] = cc; idx[k++] = dd;
             }
+    }
+
+    /// <summary>Removes props standing on the part of the lead-in that rises out of the grid.</summary>
+    static void ClearRisingPart(Segment seg, SegmentGeometry g)
+    {
+        float limit = seg.LeadInRise + 40f;
+        bool Rising(Vector3 w)
+        {
+            float best = float.MaxValue;
+            int bi = 0;
+            for (int i = 0; i < seg.Count; i += 2)
+            {
+                float d = new Vector2(seg.Pos[i].X - w.X, seg.Pos[i].Z - w.Z).LengthSquared();
+                if (d < best) { best = d; bi = i; }
+            }
+            return bi * Segment.Ds < limit;
+        }
+        g.Pylons.RemoveAll(x => Rising(x.Origin));
+        g.Gantries.RemoveAll(x => Rising(x.Origin));
+        g.TunnelRings.RemoveAll(x => Rising(x.Origin));
+        g.Gels.Clear();
+        foreach (var list in new[] { g.Rocks, g.Towers, g.Palms, g.Floaters, g.FloatRings, g.Buildings, g.Beams })
+            list.RemoveAll(c => Rising(c.xf.Origin));
     }
 
     /// <summary>Lowest terrain height across a footprint of the given radius around a lateral position.</summary>

@@ -88,6 +88,9 @@ shader_type spatial;
 render_mode cull_disabled;
 uniform vec3 edge_color : source_color = vec3(0.1, 0.9, 1.0);
 uniform vec3 accent_color : source_color = vec3(1.0, 0.2, 0.8);
+// Lead-in only: the road dissolves into the grid before this ride distance.
+uniform float fade_from = -1e9;
+uniform float fade_len = 1.0;
 varying vec3 wpos;
 " + NoiseLib + @"
 void vertex() {
@@ -101,43 +104,76 @@ float band(float x, float center, float half_w) {
     return (1.0 - smoothstep(dw - fw * 0.75, dw + fw * 0.75, abs(x - center))) * (half_w / dw);
 }
 
+vec2 hash22(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx + p3.yz) * p3.zy);
+}
+
+// Pebbles: distance to the nearest stone centre (x) and that stone's random id (y).
+vec2 stones(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    float md = 8.0, id = 0.0;
+    for (int y = -1; y <= 1; y++)
+    for (int x = -1; x <= 1; x++) {
+        vec2 g = vec2(float(x), float(y));
+        vec2 r = g + hash22(i + g) * 0.8 + 0.1 - f;
+        float d = dot(r, r);
+        if (d < md) { md = d; id = hash12(i + g); }
+    }
+    return vec2(sqrt(md), id);
+}
+
 void fragment() {
     float u = UV.x;
     float v = UV.y;
+    float vis = clamp((v - fade_from) / fade_len, 0.0, 1.0);
+    if (vis < 1.0 && hash12(floor(FRAGCOORD.xy)) > vis * vis) discard;
     float d = min(u, 1.0 - u);
     float edge = band(d, 0.0, 0.03);
     float inner = band(d, 0.09, 0.005);
-    float dash = band(u, 0.5, 0.006) * step(0.45, fract(v / 9.0));
-    float cross_line = band(fract(v / 4.0), 0.5, 0.012) * 0.12;
     float pulse = pow(fract(v / 70.0 - TIME * 0.6), 14.0);
 
-    // Rain-wet asphalt: fine grain, plus mirror-smooth puddles that reflect the neon and the sun.
+    // Gravel track: two packed tyre ruts per lane, loose stones on the crown and the verges.
     vec2 p = wpos.xz;
     float dist = length(VERTEX);
-    float grain_fade = clamp(1.0 - dist / 60.0, 0.0, 1.0);
-    float grain = mix(0.5, vnoise(p * 7.0) * 0.6 + vnoise(p * 19.0) * 0.4, grain_fade);
-    float puddle = smoothstep(0.5, 0.64, vnoise(p * 0.11) * 0.65 + vnoise(p * 0.43) * 0.35);
-    float tyre = smoothstep(0.08, 0.0, abs(abs(u - 0.5) - 0.22)) * 0.35; // polished wheel tracks
-    float wet = max(puddle, tyre);
-    vec3 asphalt = vec3(0.016, 0.014, 0.026) * (0.6 + 0.8 * grain);
-    float paint = clamp(edge + inner + dash, 0.0, 1.0);
-    ALBEDO = mix(mix(asphalt, vec3(0.004, 0.003, 0.008), wet), vec3(0.5), paint * 0.3);
-    ROUGHNESS = mix(0.4 + grain * 0.22, 0.12, wet);
+    float detail = clamp(1.0 - dist / 45.0, 0.0, 1.0);
+    float lane = fract(u * 2.0);
+    float rut = smoothstep(0.16, 0.04, abs(lane - 0.3)) + smoothstep(0.16, 0.04, abs(lane - 0.72));
+    rut = clamp(rut, 0.0, 1.0) * (0.7 + 0.3 * vnoise(p * 0.5));
+    float loose = 1.0 - rut * 0.8;
+
+    vec2 big = stones(p * 9.0);
+    vec2 small = stones(p * 23.0 + 7.3);
+    float pebble = smoothstep(0.46, 0.26, big.x) * step(0.35 + rut * 0.4, big.y);
+    float grit = smoothstep(0.45, 0.2, small.x);
+    // Height field for bump shading: domed pebbles over fine grit.
+    float h = (pebble * (1.0 - big.x * 1.6) * 1.0 + grit * 0.35) * loose;
+
+    vec3 dirt = mix(vec3(0.1, 0.1, 0.11), vec3(0.06, 0.06, 0.07), rut) * (0.8 + 0.4 * vnoise(p * 1.7));
+    vec3 stone_col = mix(vec3(0.24, 0.235, 0.24), vec3(0.1, 0.1, 0.11), big.y) * (0.85 + 0.3 * grit);
+    vec3 gravel = mix(dirt, stone_col, pebble * loose);
+    gravel = mix(vec3(0.1, 0.1, 0.11) * (0.85 + 0.3 * vnoise(p * 1.7)), gravel, detail);
+
+    // A few muddy puddles still catch the neon and the sunset.
+    float puddle = smoothstep(0.6, 0.7, vnoise(p * 0.11) * 0.65 + vnoise(p * 0.43) * 0.35) * (0.4 + 0.6 * rut);
+    ALBEDO = mix(gravel, vec3(0.02, 0.016, 0.02), puddle);
+    ROUGHNESS = mix(mix(0.92, 0.7, rut), 0.12, puddle);
     SPECULAR = 0.4;
     METALLIC = 0.0;
-    // Dry asphalt only faintly mirrors the bright sunset sky; puddles get the full reflection.
-    AO = mix(0.18, 1.0, wet);
+    AO = mix(mix(0.5, 0.25, pebble * loose), 1.0, puddle);
     AO_LIGHT_AFFECT = 0.0;
-    // Coarse bumps break up reflections outside the puddles.
-    float e = 0.05;
-    float gx = vnoise((p + vec2(e, 0.0)) * 7.0) - vnoise(p * 7.0);
-    float gz = vnoise((p + vec2(0.0, e)) * 7.0) - vnoise(p * 7.0);
-    vec3 bump = (VIEW_MATRIX * vec4(gx, 0.0, gz, 0.0)).xyz;
-    NORMAL = normalize(NORMAL - bump * 0.35 * (1.0 - wet) * grain_fade);
-    // Neon spill from the edge tubes onto the asphalt, brighter where it's wet.
-    float spill = exp(-d * 16.0) * (0.06 + 0.16 * wet) * (1.0 + pulse * 2.0);
-    EMISSION = edge_color * (edge * (1.5 + pulse * 4.0) + inner * 0.6 + cross_line + spill)
-             + accent_color * (dash * 1.1 + exp(-abs(u - 0.5) * 40.0) * step(0.45, fract(v / 9.0)) * 0.05 * wet);
+
+    // Bump from the height field (surface-gradient bump mapping in view space).
+    vec3 dpdx = dFdx(VERTEX), dpdy = dFdy(VERTEX);
+    vec3 r1 = cross(dpdy, NORMAL), r2 = cross(NORMAL, dpdx);
+    float det = dot(dpdx, r1);
+    vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
+    float strength = 0.02 * detail * (1.0 - puddle);
+    NORMAL = normalize(abs(det) * NORMAL - grad * strength);
+
+    float spill = exp(-d * 16.0) * (0.04 + 0.16 * puddle) * (1.0 + pulse * 2.0);
+    EMISSION = edge_color * (edge * (1.5 + pulse * 4.0) + inner * 0.6 + spill + vis * (1.0 - vis) * 1.6);
 }
 ");
 
@@ -146,12 +182,15 @@ shader_type spatial;
 render_mode unshaded, cull_disabled, blend_add, depth_draw_never, shadows_disabled;
 uniform vec3 color : source_color = vec3(0.1, 0.9, 1.0);
 uniform float intensity = 0.9;
+uniform float fade_from = -1e9;
+uniform float fade_len = 1.0;
 void fragment() {
     float h = clamp(UV.y, 0.0, 1.0);
+    float vis = clamp((UV.x - fade_from) / fade_len, 0.0, 1.0);
     float body = pow(1.0 - h, 2.2) * 0.35;
     float top = smoothstep(0.88, 1.0, h) * 1.4;
     float scan = 0.75 + 0.25 * sin(UV.x * 0.5 - TIME * 5.0);
-    ALBEDO = color * intensity * (body * scan + top);
+    ALBEDO = color * intensity * (body * scan + top) * vis;
 }
 ");
 
@@ -550,20 +589,67 @@ void fragment() {
 }
 ");
 
-    /// <summary>Glossy candy-paint bike frame with glowing pinstripes and a coloured rim.</summary>
+    /// <summary>Matte painted bike frame with a thin glowing pinstripe in the route colour.</summary>
     public static readonly Shader Paint = Make(@"
 shader_type spatial;
+uniform vec3 base_color : source_color = vec3(0.42, 0.46, 0.39);
 uniform vec3 color : source_color = vec3(0.1, 0.9, 1.0);
-uniform float energy = 3.2;
+uniform float energy = 1.6;
 void fragment() {
-    float stripe = 1.0 - smoothstep(0.05, 0.08, abs(fract(UV.x * 2.0) - 0.5));
+    float stripe = 1.0 - smoothstep(0.012, 0.03, abs(fract(UV.x * 2.0 + 0.25) - 0.5));
     float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-    ALBEDO = color * 0.06 + vec3(0.012, 0.01, 0.02);
-    METALLIC = 0.55;
-    ROUGHNESS = 0.2;
-    CLEARCOAT = 1.0;
-    CLEARCOAT_ROUGHNESS = 0.08;
-    EMISSION = color * (stripe * energy + fres * 0.7);
+    ALBEDO = base_color;
+    METALLIC = 0.15;
+    ROUGHNESS = 0.5;
+    CLEARCOAT = 0.3;
+    CLEARCOAT_ROUGHNESS = 0.4;
+    EMISSION = color * (stripe * energy + fres * 0.12);
+}
+");
+
+    /// <summary>Gravel tyre (torus around local Y): knobbly black tread and tan-wall sidewalls.</summary>
+    public static readonly Shader Tyre = Make(@"
+shader_type spatial;
+varying vec3 lpos;
+varying vec3 lnorm;
+void vertex() {
+    lpos = VERTEX;
+    lnorm = NORMAL;
+}
+void fragment() {
+    float side = smoothstep(0.45, 0.7, abs(lnorm.y));
+    float ang = atan(lpos.z, lpos.x);
+    float knob = step(0.5, fract(ang * 52.0 / 6.2832 + step(0.0, lpos.y) * 0.5)) * (1.0 - side);
+    ALBEDO = mix(vec3(0.025, 0.022, 0.02) * (1.0 + knob * 0.6), vec3(0.42, 0.26, 0.13), side);
+    ROUGHNESS = mix(0.8, 0.6, side);
+    SPECULAR = 0.3;
+}
+");
+
+    /// <summary>
+    /// Clothing / skin split along the part's local Y: colour_a below <c>split</c>, colour_b above,
+    /// with a faint coloured rim so the rider stays readable against the dark world.
+    /// </summary>
+    public static readonly Shader Kit = Make(@"
+shader_type spatial;
+uniform vec3 color_a : source_color = vec3(0.8, 0.6, 0.45);
+uniform vec3 color_b : source_color = vec3(0.8, 0.6, 0.45);
+uniform float split = 100.0;
+uniform float rough_a = 0.6;
+uniform float rough_b = 0.6;
+uniform vec3 rim_color : source_color = vec3(0.1, 0.9, 1.0);
+uniform float rim = 0.35;
+varying float ly;
+void vertex() {
+    ly = VERTEX.y;
+}
+void fragment() {
+    float b = step(split, ly);
+    ALBEDO = mix(color_a, color_b, b);
+    ROUGHNESS = mix(rough_a, rough_b, b);
+    SPECULAR = 0.35;
+    float f = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+    EMISSION = rim_color * f * rim;
 }
 ");
 }

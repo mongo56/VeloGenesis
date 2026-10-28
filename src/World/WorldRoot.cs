@@ -38,6 +38,7 @@ public partial class WorldRoot : Node3D
     public event Action<int> KmPassed;
 
     readonly List<Segment> _live = new();
+    Segment _leadIn, _leadInNext;
     Task<(Segment[] kids, SegmentGeometry[] geo)> _pending;
     Segment _pendingFor;
 
@@ -141,6 +142,18 @@ public partial class WorldRoot : Node3D
         var start = _gen.CreateStart();
         var geo = WorldBuilder.Build(start, null, q, _gen.WorldSeed);
         Attach(start, geo);
+
+        // Visual lead-in behind the start line (not part of the course), and the start gate.
+        _leadIn = _gen.CreateLeadIn(start);
+        Attach(_leadIn, WorldBuilder.Build(_leadIn, null, q, _gen.WorldSeed));
+        _live.Remove(_leadIn);
+        _leadInNext = start;
+        start.Sample(30f, out var gp, out float gh, out _);
+        start.Visual.AddChild(MakeGate(new Transform3D(Basis.FromEuler(new Vector3(0, -gh, 0)), gp), new[]
+        {
+            new HoloBoard.Line("START", 150, HoloBoard.Glow(start.Secondary.Lightened(0.55f), 1.6f), 0.15f),
+            new HoloBoard.Line("BOOT SEQUENCE", 56, HoloBoard.Glow(UI.UiTheme.CaptionColor, 1.2f)),
+        }, start.Secondary));
         Current = start;
         UpdatePose();
         SectorEntered?.Invoke(start);
@@ -260,6 +273,15 @@ public partial class WorldRoot : Node3D
 
         var wallMat = new ShaderMaterial { Shader = Shaders.Wall };
         wallMat.SetShaderParameter("color", seg.Primary);
+        if (seg.LeadInRise > 0)
+        {
+            // The lead-in road dissolves into the grid at its far end.
+            foreach (var m in new[] { roadMat, wallMat })
+            {
+                m.SetShaderParameter("fade_from", seg.StartDist);
+                m.SetShaderParameter("fade_len", 160f);
+            }
+        }
         root.AddChild(new MeshInstance3D { Mesh = g.Walls.ToMesh(), MaterialOverride = wallMat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
 
         var terrainMat = new ShaderMaterial { Shader = Shaders.Terrain };
@@ -334,7 +356,7 @@ public partial class WorldRoot : Node3D
         LightEnergy = 4f,
         LightVolumetricFogEnergy = 0.6f,
         LightSpecular = 0.5f,
-        OmniRange = 13f,
+        OmniRange = 16f,
         OmniAttenuation = 1.2f,
         ShadowEnabled = false,
         DistanceFadeEnabled = true,
@@ -400,7 +422,10 @@ public partial class WorldRoot : Node3D
 
     Node3D MakeGate(Transform3D xf, int km, Color color) => MakeGate(xf, $"{km} KM", color);
 
-    Node3D MakeGate(Transform3D xf, string text, Color color)
+    Node3D MakeGate(Transform3D xf, string text, Color color) =>
+        MakeGate(xf, new[] { new HoloBoard.Line(text, 150, HoloBoard.Glow(color.Lightened(0.55f), 1.6f)) }, color);
+
+    Node3D MakeGate(Transform3D xf, HoloBoard.Line[] lines, Color color)
     {
         var gate = new Node3D { Transform = xf };
         var mat = Meshes.Glow(color, 2.5f);
@@ -417,9 +442,13 @@ public partial class WorldRoot : Node3D
             gate.AddChild(light);
         }
         // Sign panel hung under the top beam.
-        var board = HoloBoard.Build(color, new[] { new HoloBoard.Line(text, 150, HoloBoard.Glow(color.Lightened(0.55f), 1.6f)) }, HorizontalAlignment.Center, 3.2f);
+        var board = HoloBoard.Build(color, lines, HorizontalAlignment.Center, 3.2f);
         board.Position = new Vector3(0, height - 0.25f - HoloBoard.SizeOf(board).Y, 0);
         gate.AddChild(board);
+        // Same board back-to-back so the gate reads from both directions (cinematic cameras).
+        var back = HoloBoard.Build(color, lines, HorizontalAlignment.Center, 3.2f);
+        back.Transform = new Transform3D(new Basis(Vector3.Up, MathF.PI), board.Position + new Vector3(0, 0, -0.06f));
+        gate.AddChild(back);
         // Short hangers from the beam to the panel corners.
         float hw = HoloBoard.SizeOf(board).X * 0.5f - 0.6f;
         foreach (int side in new[] { -1, 1 })
@@ -537,6 +566,11 @@ public partial class WorldRoot : Node3D
             s.Visual = null;
             s.Disposed = true;
             _live.RemoveAt(i);
+        }
+        if (_leadIn != null && _leadInNext.Disposed)
+        {
+            _leadIn.Visual?.QueueFree();
+            _leadIn = null;
         }
     }
 
