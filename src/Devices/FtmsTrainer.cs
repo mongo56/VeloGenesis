@@ -46,8 +46,16 @@ public class FtmsTrainer : BleLink, ITrainer
         if (_controlPoint != null)
         {
             // Spec requires indications to be enabled on the control point before writing to it.
-            await SubscribeAsync(_controlPoint, true, ParseControlResponse);
-            await RequestControlAsync();
+            // A failure here must not drop the link: power/cadence still work, and the sender loop retries control.
+            try
+            {
+                await SubscribeAsync(_controlPoint, true, ParseControlResponse);
+                await RequestControlAsync();
+            }
+            catch (Exception e)
+            {
+                GD.PrintErr($"[{Name}] control point setup failed: {e.GetType().Name} 0x{e.HResult:X8} {e.Message}");
+            }
         }
         else GD.PrintErr($"[{Name}] trainer has no FTMS control point – power data only");
 
@@ -58,7 +66,12 @@ public class FtmsTrainer : BleLink, ITrainer
     async Task RequestControlAsync()
     {
         _controlGranted = await WriteAsync(_controlPoint, new byte[] { 0x00 });
-        if (_controlGranted) await WriteAsync(_controlPoint, new byte[] { 0x07 }); // Start / resume
+        // Start / resume is optional; some trainers (R200) reject or throw on it.
+        if (_controlGranted)
+        {
+            try { await WriteAsync(_controlPoint, new byte[] { 0x07 }); }
+            catch (Exception e) { GD.PrintErr($"[{Name}] start/resume rejected: {e.GetType().Name} 0x{e.HResult:X8}"); }
+        }
     }
 
     void ParseControlResponse(byte[] b)

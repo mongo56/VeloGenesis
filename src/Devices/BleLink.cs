@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Godot;
@@ -20,6 +21,10 @@ public abstract class BleLink
     double _lastData = -1;
     bool _disposed;
     bool _reconnecting;
+
+    // WinRT stops delivering ValueChanged once the GattCharacteristic is garbage-collected,
+    // so every subscribed characteristic must stay referenced for the life of the session.
+    readonly List<GattCharacteristic> _subscribed = new();
 
     public ulong Address { get; }
     public string Name { get; protected set; }
@@ -45,14 +50,15 @@ public abstract class BleLink
             if (Device == null) { SetState(ConnState.Disconnected, "Device not found"); return false; }
             if (!string.IsNullOrWhiteSpace(Device.Name)) Name = Device.Name;
             Device.ConnectionStatusChanged += OnConnectionStatusChanged;
+            _subscribed.Clear();
             if (!await SetupAsync()) { SetState(ConnState.Disconnected, Status == "" ? "Setup failed" : Status); return false; }
             SetState(ConnState.Connected, "Connected");
             return true;
         }
         catch (Exception e)
         {
-            GD.PrintErr($"[{Name}] connect failed: {e.Message}");
-            SetState(ConnState.Disconnected, "Error: " + e.Message);
+            GD.PrintErr($"[{Name}] connect failed: {e.GetType().Name} 0x{e.HResult:X8} {e.Message}\n{e.StackTrace}");
+            SetState(ConnState.Disconnected, "Error: " + (string.IsNullOrWhiteSpace(e.Message) ? $"{e.GetType().Name} 0x{e.HResult:X8}" : e.Message));
             return false;
         }
     }
@@ -69,8 +75,9 @@ public abstract class BleLink
         return cr.Characteristics[0];
     }
 
-    protected static async Task<bool> SubscribeAsync(GattCharacteristic c, bool indicate, Action<byte[]> handler)
+    protected async Task<bool> SubscribeAsync(GattCharacteristic c, bool indicate, Action<byte[]> handler)
     {
+        _subscribed.Add(c);
         c.ValueChanged += (_, args) =>
         {
             var reader = DataReader.FromBuffer(args.CharacteristicValue);
@@ -121,6 +128,7 @@ public abstract class BleLink
                 // re-running setup re-subscribes notifications on the fresh session.
                 try
                 {
+                    _subscribed.Clear();
                     if (await SetupAsync()) { SetState(ConnState.Connected, "Reconnected"); break; }
                 }
                 catch (Exception e) { GD.PrintErr($"[{Name}] reconnect attempt failed: {e.Message}"); }
@@ -139,6 +147,7 @@ public abstract class BleLink
     public virtual void Disconnect()
     {
         _disposed = true;
+        _subscribed.Clear();
         if (Device != null)
         {
             Device.ConnectionStatusChanged -= OnConnectionStatusChanged;
