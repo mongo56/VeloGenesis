@@ -65,7 +65,7 @@ public class Quality
         // MSAA smooths polygon edges; the screen-space passes also catch shader edges
         // (thin glowing grid lines), and TAA removes their shimmer in the distance.
         var msaa = Msaa == Viewport.Msaa.Disabled ? Viewport.Msaa.Msaa2X : Msaa;
-        float scale = RenderScale;
+        float scale = Display.RenderScale(this);
         vp.UseTaa = false;
         switch (aa)
         {

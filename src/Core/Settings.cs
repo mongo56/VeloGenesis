@@ -18,6 +18,14 @@ public class Settings
     public bool SteadyHud = true;
     /// <summary>One of Quality.AaModes.</summary>
     public string AntiAliasing = "Auto";
+    /// <summary>One of Display.Modes: Windowed, Borderless, Exclusive.</summary>
+    public string DisplayMode = "Windowed";
+    /// <summary>Fullscreen mode F11 returns to.</summary>
+    public string LastFullscreenMode = "Borderless";
+    /// <summary>Windowed-mode size; 0 = default.</summary>
+    public int WindowWidth, WindowHeight;
+    /// <summary>3D render scale (0 = by quality preset). Upscaled with FSR below 100%.</summary>
+    public float RenderScale;
 
     /// <summary>0..1 scale applied to the grade sent to the trainer in free ride (like "trainer difficulty").</summary>
     public float TrainerDifficulty = 0.5f;

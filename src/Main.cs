@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using Godot;
 using VeloGenesis.Audio;
 using VeloGenesis.Core;
@@ -53,6 +54,9 @@ public partial class Main : Node
             else if (a.StartsWith("--aa=")) Settings.Current.AntiAliasing = a[5..];
             else if (a.StartsWith("--music=")) Settings.Current.MusicSource = a[8..];
         InputSetup.Register();
+        // Verification runs (--shot, --sfx-dump…) keep the default window instead of the saved mode.
+        if (!OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--shot") || a.Contains("-dump=") || a == "--demo"))
+            Display.Apply();
         Quality.Get(Settings.Current.Quality).ApplyToViewport(GetViewport());
         DisplayServer.WindowSetTitle("VeloGenesis");
 
@@ -196,9 +200,7 @@ public partial class Main : Node
             }
         }
 
-        if (Input.IsActionJustPressed(InputSetup.Fullscreen))
-            DisplayServer.WindowSetMode(DisplayServer.WindowGetMode() is DisplayServer.WindowMode.Fullscreen or DisplayServer.WindowMode.ExclusiveFullscreen
-                ? DisplayServer.WindowMode.Windowed : DisplayServer.WindowMode.Fullscreen);
+        if (Input.IsActionJustPressed(InputSetup.Fullscreen)) Display.ToggleFullscreen();
 
         if (Input.IsActionJustPressed(InputSetup.Screenshot))
         {
@@ -298,6 +300,7 @@ public partial class Main : Node
         st.AudioChanged += _music.ApplySettings;
         st.VolumeChanged += _music.ApplyVolume;
         st.AntiAliasingChanged += () => Quality.Get(Settings.Current.Quality).ApplyToViewport(GetViewport());
+        st.RenderScaleChanged += () => Quality.Get(Settings.Current.Quality).ApplyToViewport(GetViewport());
         st.OpenControls += () =>
         {
             var c = new ControlsScreen();

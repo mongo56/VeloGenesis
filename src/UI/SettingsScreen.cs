@@ -13,7 +13,10 @@ public partial class SettingsScreen : Screen
     {
         Dim = 0.5f;
         var s = Settings.Current;
-        var panel = UiTheme.Anchor(UiTheme.Panel(0.9f, 30), 0.5f, 0.5f, -680, 0, 1360, 0);
+        // Full height with a scrolling middle, so every row stays reachable in short or wide windows.
+        var panel = UiTheme.Anchor(UiTheme.Panel(0.9f, 30), 0.5f, 0, -680, 24, 1360, 0);
+        panel.AnchorBottom = 1;
+        panel.OffsetBottom = -24;
         AddChild(panel);
         var v = UiTheme.VBox(10);
         panel.AddChild(v);
@@ -43,11 +46,49 @@ public partial class SettingsScreen : Screen
         v.AddChild(Row("Virtual shifting", vs, "Keep the bike in one gear and shift in-game. Turn off to use your real gears."));
 
         v.AddChild(Section("GRAPHICS"));
+        var mode = new OptionButton();
+        foreach (var n in Display.ModeNames) mode.AddItem(n);
+        mode.Selected = Math.Max(0, Array.IndexOf(Display.Modes, s.DisplayMode));
+        var size = new OptionButton();
+        var sizes = Display.WindowSizes();
+        foreach (var sz in sizes) size.AddItem(Display.SizeName(sz));
+        size.Selected = Math.Max(0, sizes.IndexOf(Display.WindowSize));
+        var displayRow = UiTheme.HBox(12);
+        displayRow.AddChild(mode);
+        displayRow.AddChild(size);
+        var display = Row("Display", displayRow, "");
+        var displayHelp = (Label)display.GetChild(display.GetChildCount() - 1);
+        v.AddChild(display);
+
         var q = new OptionButton();
         foreach (var n in Quality.Names) q.AddItem(n);
         q.Selected = Math.Max(0, Array.IndexOf(Quality.Names, s.Quality));
-        q.ItemSelected += i => { s.Quality = Quality.Names[i]; QualityChanged?.Invoke(); };
-        v.AddChild(Row("Quality", q, "Low/Medium render at reduced resolution with FSR upscaling and lighter terrain."));
+        var scale = new OptionButton();
+        foreach (var n in Display.RenderScaleNames) scale.AddItem("Render " + n);
+        scale.Selected = Math.Max(0, Array.IndexOf(Display.RenderScales, s.RenderScale));
+        var qualityRow = UiTheme.HBox(12);
+        qualityRow.AddChild(q);
+        qualityRow.AddChild(scale);
+        var quality = Row("Quality", qualityRow, "");
+        var qualityHelp = (Label)quality.GetChild(quality.GetChildCount() - 1);
+        v.AddChild(quality);
+
+        void ShowDisplay()
+        {
+            var screen = Display.NativeSize;
+            var px = Display.IsFullscreen ? screen : Display.WindowSize;
+            size.Visible = !Display.IsFullscreen;
+            displayHelp.Text = Display.IsFullscreen
+                ? $"Uses the monitor's native {screen.X} × {screen.Y}. F11 switches to a window and back."
+                : "F11 switches to fullscreen and back.";
+            float rs = Display.RenderScale(Quality.Get(s.Quality));
+            qualityHelp.Text = $"3D renders at {(int)(px.X * rs)} × {(int)(px.Y * rs)}" + (rs < 0.99f ? ", upscaled with FSR." : ".") + " Lower quality also lightens the terrain.";
+        }
+        ShowDisplay();
+        mode.ItemSelected += i => { s.DisplayMode = Display.Modes[i]; Display.Apply(); ShowDisplay(); };
+        size.ItemSelected += i => { s.WindowWidth = sizes[(int)i].X; s.WindowHeight = sizes[(int)i].Y; Display.Apply(); ShowDisplay(); };
+        q.ItemSelected += i => { s.Quality = Quality.Names[i]; QualityChanged?.Invoke(); ShowDisplay(); };
+        scale.ItemSelected += i => { s.RenderScale = Display.RenderScales[i]; RenderScaleChanged?.Invoke(); ShowDisplay(); };
         var aa = new OptionButton();
         foreach (var d in Quality.AaDescriptions) aa.AddItem(d);
         aa.Selected = Math.Max(0, Array.IndexOf(Quality.AaModes, s.AntiAliasing));
@@ -110,6 +151,21 @@ public partial class SettingsScreen : Screen
         buttons.AddChild(UiTheme.Button("⌨  CONTROLS / KEY BINDINGS", () => { Settings.Save(); OpenControls?.Invoke(); }, 22));
         v.AddChild(buttons);
         FirstFocus = ftp.GetLineEdit();
+
+        var scroll = new ScrollContainer { FollowFocus = true, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, SizeFlagsVertical = SizeFlags.ExpandFill };
+        var body = UiTheme.VBox(10);
+        body.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        scroll.AddChild(body);
+        foreach (var c in v.GetChildren())
+        {
+            if (c.GetIndex() == 0 || c == buttons) continue;
+            v.RemoveChild(c);
+            body.AddChild(c);
+        }
+        v.AddChild(scroll);
+        v.MoveChild(scroll, 1);
+        // Start at the top once the first layout pass is done (focus-follow can scroll before sizes settle).
+        GetTree().CreateTimer(0).Timeout += () => scroll.ScrollVertical = 0;
     }
 
     protected override void Cancel()
@@ -118,5 +174,5 @@ public partial class SettingsScreen : Screen
         Back?.Invoke();
     }
 
-    public event Action QualityChanged, AudioChanged, VolumeChanged, OpenControls, OpenStrava, AntiAliasingChanged;
+    public event Action RenderScaleChanged, QualityChanged, AudioChanged, VolumeChanged, OpenControls, OpenStrava, AntiAliasingChanged;
 }
