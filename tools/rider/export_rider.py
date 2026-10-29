@@ -128,10 +128,15 @@ def kit_region(bone, s, length):
         return (0, 0, ramp(s - 0.55 * length), 0)
     if side in ("foot", "ball"):
         return (0, 0, 1, 0)
-    if side == "hand":
+    # Gloves ramp like the socks so the cuff and finger ends are clean lines rather than following the
+    # triangles: the cuff sits 1.5 cm up the forearm, the short fingers end part way along the first phalanx.
+    if side == "lowerarm":
+        return (0, 0, 0, ramp(s - (length - 0.015)))
+    if side == "hand" or side == "thumb_01":
         return (0, 0, 0, 1)
-    if side.endswith("_01") and side.split("_")[0] in ("index", "middle", "ring", "pinky", "thumb"):
-        return (0, 0, 0, 1)  # short-finger gloves cover the first knuckle
+    finger = side.split("_")[0] in ("index", "middle", "ring", "pinky")
+    if (finger and side.endswith("_01")) or side == "thumb_02":
+        return (0, 0, 0, ramp(0.55 * length - s))
     return (0, 0, 0, 0)
 
 
@@ -196,7 +201,7 @@ def paint_kit(mesh_obj, arm):
     me.color_attributes.active_color = attr
 
 
-def hide_covered(body, garments, reach=0.035, margin=3, keep_bones=()):
+def hide_covered(body, garments, reach=0.035, margin=3, keep_bones=(), collar_bones=()):
     """Deletes the parts of `body` (the skin, or an inner garment) hidden under the garments: vertices whose
     outward normal runs into a garment within `reach`, minus `margin` rings next to anything visible, so the
     hems never open a gap. Under a loose neckline the shirt is further away than `reach`, so that skin stays."""
@@ -235,6 +240,26 @@ def hide_covered(body, garments, reach=0.035, margin=3, keep_bones=()):
         hems.insert(co, i)
     hems.balance()
 
+    # The collar: garment boundary bound mostly to the neck and shoulders. The shirt stands 1-2 cm off the
+    # body, so looking down the neckline would show the hollow inside of the shirt where the skin was deleted.
+    collar = []
+    for g in garments:
+        names = {vg.index: vg.name for vg in g.vertex_groups}
+        me = g.data
+        edge_count = {}
+        for poly in me.polygons:
+            for e in poly.edge_keys:
+                edge_count[e] = edge_count.get(e, 0) + 1
+        for i in {i for e, c in edge_count.items() if c == 1 for i in e}:
+            ws = [(names.get(x.group), x.weight) for x in me.vertices[i].groups]
+            total = sum(w for _, w in ws) or 1.0
+            if sum(w for n, w in ws if n in collar_bones) / total > 0.5:
+                collar.append(g.matrix_world @ me.vertices[i].co)
+    neckline = KDTree(max(1, len(collar)))
+    for i, co in enumerate(collar):
+        neckline.insert(co, i)
+    neckline.balance()
+
     bm = bmesh.new()
     bm.from_mesh(body.data)
     bm.verts.ensure_lookup_table()
@@ -260,6 +285,12 @@ def hide_covered(body, garments, reach=0.035, margin=3, keep_bones=()):
         kept = {v for v in covered if sum(w for g, w in v[deform].items() if g in idx) >= 0.3 and near(v)}
         for v in kept:
             v.co -= v.normal * 0.007  # tuck the limb in a little so it can't graze through the fabric
+        covered -= kept
+    if collar:
+        # Skin within 8 cm of the collar stays, tucked in like the limbs, so the neckline shows skin inside it.
+        kept = {v for v in covered if neckline.find(world @ v.co)[2] < 0.08}
+        for v in kept:
+            v.co -= v.normal * 0.004
         covered -= kept
     for _ in range(margin):
         covered = {v for v in covered if all(e.other_vert(v) in covered for e in v.link_edges)}
@@ -329,6 +360,8 @@ def skin_copy(basemesh):
 ARM_BONES = ("upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r")
 # Limbs inside garment openings (sleeves, shorts legs): their skin is kept and tucked in.
 LIMB_BONES = ARM_BONES + ("thigh_l", "thigh_r")
+# Bones the shirt's neckline follows (its skin is kept so you can't see into the shirt).
+COLLAR_BONES = ("neck_01", "spine_03", "clavicle_l", "clavicle_r")
 
 
 def copy_skin_weights(garment, skin):
@@ -491,7 +524,8 @@ def build(name, macros, HumanService, ExportService, AssetService, TargetService
     fit_to_body(parts["Shirt"], full_body, 0.012, 0.022)  # athletic fit, never inside the shorts
     paint_kit(basemesh, arm)
     paint_under_shorts(basemesh, parts["Shorts"], arm)
-    hide_covered(basemesh, [parts["Shirt"], parts["Shorts"]], keep_bones=LIMB_BONES)
+    hide_covered(basemesh, [parts["Shirt"], parts["Shorts"]], keep_bones=LIMB_BONES,
+                 collar_bones=COLLAR_BONES)
     # Shirt and shorts take the skin's own bone weights, so they bend exactly like the body under them and
     # keep their spacing (with their own weights the waistband and the shirt's hem crossed when leaning).
     for garment in (parts["Shirt"], parts["Shorts"]):
