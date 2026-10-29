@@ -12,6 +12,13 @@ Godot 4.7 (.NET / C#).
 | ![Chasing a draft pack](docs/screenshots/pack.jpg) | ![Rhythm zone: hold the target cadence](docs/screenshots/rhythm.jpg) |
 | ![Aurora Peaks biome](docs/screenshots/aurora.jpg) | ![Desert Grid biome](docs/screenshots/desert.jpg) |
 
+**Riders:** realistic MakeHuman bodies in a lean cyclist build, posed live from the saddle, pedals and bars,
+on a modelled gravel bike, in synthwave kit.
+
+| | |
+|---|---|
+| ![Male rider on the hoods](docs/screenshots/rider.jpg) | ![Female rider close-up](docs/screenshots/rider-female.jpg) |
+
 **ERG workouts:** pick a workout, length and FTP, then ride the intervals while the world plays on around you.
 
 ![ERG sweet-spot interval inside a draft pack, with a rhythm zone](docs/screenshots/erg.jpg)
@@ -115,8 +122,8 @@ the one thing you control.
 ## Biomes
 
 Every ~7 km the road enters a new biome: Sunset Strip, Neon Metropolis, Desert Grid or Aurora Peaks.
-Each has its own sky, sun, fog, rock colours, road palettes and scenery, and the procedural music starts
-a new song. A welcome arch, a banner and a sound sting mark each crossing.
+Each has its own sky, sun, fog, rock colours, road palettes and scenery, and the soundtrack crossfades to one
+of that biome's songs. A welcome arch, a banner and a sound sting mark each crossing.
 
 ## Steady HUD and audio cues
 
@@ -162,6 +169,35 @@ create API apps. If you have a subscription, you can connect the game for one-cl
 
 Credentials and tokens are stored in `%APPDATA%/Godot/app_userdata/VeloGenesis/strava.json`.
 
+## Music
+
+By default the game plays its own **soundtrack**: about 90 minutes of mellow, warm 80s synthwave, generated
+with [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-1.5). Each song is a complete 2½-minute instrumental
+written in one pass. Each biome has its own set of songs: warm sunset tracks for Sunset Strip, night-city ones for
+Neon Metropolis, wide open-road ones for Desert Grid and spacey ones for Aurora Peaks. The soundtrack crossfades to
+the new biome's songs at each crossing. Settings → Music also offers the procedural synthwave engine, your own
+music folder, or YouTube Music / another player.
+
+The tracks are made offline by `tools/music/generate.py` (it needs a CUDA GPU and an ACE-Step checkout; see the
+script header) into `assets/music/`, with `soundtrack.json` listing each track's biome, prompt, BPM and seed.
+Rerun it with a larger `--per-biome` to add songs.
+
+## Rider model
+
+The riders are realistic male and female bodies made with [MakeHuman](http://www.makehumancommunity.org/)'s
+Blender add-on MPFB2, with a game-engine skeleton. `tools/rider/export_rider.py` builds lean, fit cyclist
+proportions and fits MakeHuman community assets to them: hair, eyebrows, eyelashes, eyes, a T-shirt, shorts,
+cycling shoes and sport sunglasses. The game tints the shirt, shorts and shoes per rider. Socks and short-finger
+gloves are painted into the vertex colours. The script exports
+`assets/rider/rider_male.glb` and `rider_female.glb`. In the game, each rider's skeleton is posed every frame
+from the bike: hips on the saddle, the balls of the feet on the pedals and the hands on the hoods or drops.
+The shader colours the kit, so team jerseys, AI riders and ghosts all share the same two meshes. To rebuild them,
+install Blender 4.2+ and the MPFB extension, add the asset packs *MakeHuman system assets*, *Shoes 02* and
+*Glasses 02*, *Shirts 01* and *Pants 03* from the [MakeHuman asset packs](https://static.makehumancommunity.org/assets/assetpacks.html)
+(MPFB → Apply assets → Library settings → Install asset pack), then run `blender -b -P tools/rider/export_rider.py`.
+The saddle and the cockpit (drop bar, tape, hoods, levers and stem) are modelled by
+`blender -b --factory-startup -P tools/bike/make_saddle.py` and `make_handlebar.py` (→ `assets/bike/`).
+
 ## Files
 
 - Rides: `Documents/VeloGenesis/Rides/*.fit` (cycling / virtual activity)
@@ -180,15 +216,22 @@ src/Main.cs                 state machine: menu (attract-mode world) → setup �
 src/Core/                   settings, quality presets, input map, main-thread dispatcher
 src/Devices/                WinRT BLE: scanner, FTMS trainer (ERG + sim), HR strap, keyboard simulator
 src/Ride/                   ride loop, physics, virtual gearing, fork decider, workouts, recorder, FIT writer
-src/World/                  course generator, mesh builder (worker thread), streaming world, shaders, avatar
+src/World/                  course generator, mesh builder (worker thread), streaming world, shaders,
+                            rider avatar (bike + MakeHuman body posed by IK from saddle, pedals and bars)
 src/Online/                 Strava OAuth (loopback redirect) + FIT upload
-src/Audio/                  procedural synthwave engine + music director
+src/Audio/                  soundtrack player, procedural synthwave engine (+ all sound effects), music director
+tools/music/                offline soundtrack generator (ACE-Step 1.5)
+tools/rider/                rider body export (Blender + MakeHuman's MPFB2 add-on → assets/rider/*.glb)
+tools/bike/                 saddle and handlebar models (Blender → assets/bike/*.glb)
 src/UI/                     neon theme, HUD, graphs, menus
 ```
 
 Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|setup-erg|devices|settings|controls|strava|pause`,
 `--shot=out.png --shot-after=8`, `--skip=metres`, `--timescale=6`, `--sim-power=300`, `--seed=n`,
-`--quality=Low|Medium|High|Ultra`, `--music=Procedural|Files|Both|External`, `--finish-after=sec`, `--camera=n`, `--no-ble`.
+`--quality=Low|Medium|High|Ultra`, `--music=Soundtrack|Procedural|Files|Both|External`, `--finish-after=sec`, `--camera=n`, `--no-ble`,
+`--female` (ride as a woman), `--orbit` (mouse-driven close-up camera on the rider: left-drag orbits, right-drag
+moves up / down, wheel zooms), `--inspect=right,up,back[,lookY[,lookFwd]]` (fixed close-up camera, metres).
+`TestRide.bat` options 5 and 6 start a male / female rider close-up.
 
 ## Roadmap
 
@@ -197,3 +240,11 @@ Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|setup-erg|devic
 ## License
 
 [MIT](LICENSE). The Chakra Petch fonts in `assets/fonts` are under the SIL Open Font License ([OFL.txt](assets/fonts/OFL.txt)).
+The soundtrack in `assets/music` was generated with ACE-Step 1.5 (MIT) and is released under the same MIT license
+as the game.
+The rider bodies in `assets/rider` are MakeHuman exports (CC0). Their hair, eyes, eyebrows and eyelashes are
+MakeHuman system assets, and the T-shirts are *Crude T-shirt* by Elvaerwyn and Joel Palmius, all CC0. They also
+include these CC-BY assets from the MakeHuman community asset packs
+([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)):
+- *Cycling Shoes* and *Sport Sunglasses* by **punkduck**
+- *Male Swimming Trunks 01* by **Mindfront**, used as the shorts

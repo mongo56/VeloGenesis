@@ -1,0 +1,328 @@
+{
+  "tracks": [
+    {
+      "title": "Midnight Runner",
+      "biome": "sunset",
+      "file": "sunset/midnight_runner.ogg",
+      "prompt": "warm dreamy synthwave, golden hour, soft retro drums, shimmering arpeggios, wide analog pads, smooth steady groove, classic 80s synthwave, clean analog bass, no dubstep, no wobble bass, no drops, instrumental",
+      "bpm": 96,
+      "seed": 2200,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Chrome Highway",
+      "biome": "sunset",
+      "file": "sunset/chrome_highway.ogg",
+      "prompt": "warm sunset synthwave, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 96,
+      "seed": 2300,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Coral Runner",
+      "biome": "sunset",
+      "file": "sunset/coral_runner.ogg",
+      "prompt": "warm sunset synthwave, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 96,
+      "seed": 2301,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Midnight Afterglow",
+      "biome": "metropolis",
+      "file": "metropolis/midnight_afterglow.ogg",
+      "prompt": "night city synthwave, neon reflections, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 98,
+      "seed": 2310,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Prism Runner",
+      "biome": "metropolis",
+      "file": "metropolis/prism_runner.ogg",
+      "prompt": "night city synthwave, neon reflections, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 98,
+      "seed": 2311,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Turbo Afterglow",
+      "biome": "metropolis",
+      "file": "metropolis/turbo_afterglow.ogg",
+      "prompt": "night city synthwave, neon reflections, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 98,
+      "seed": 2312,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Prism Coast",
+      "biome": "desert",
+      "file": "desert/prism_coast.ogg",
+      "prompt": "open road desert synthwave, wide and airy, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 94,
+      "seed": 2321,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Static Velocity",
+      "biome": "desert",
+      "file": "desert/static_velocity.ogg",
+      "prompt": "open road desert synthwave, wide and airy, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 94,
+      "seed": 2322,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Static Horizon",
+      "biome": "aurora",
+      "file": "aurora/static_horizon.ogg",
+      "prompt": "starry night synthwave, spacey, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 90,
+      "seed": 2330,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Static Dream",
+      "biome": "aurora",
+      "file": "aurora/static_dream.ogg",
+      "prompt": "starry night synthwave, spacey, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 90,
+      "seed": 2331,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Velvet Orbit",
+      "biome": "aurora",
+      "file": "aurora/velvet_orbit.ogg",
+      "prompt": "starry night synthwave, spacey, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 90,
+      "seed": 2332,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Velvet Frontier",
+      "biome": "sunset",
+      "file": "sunset/velvet_frontier.ogg",
+      "prompt": "warm sunset synthwave, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 96,
+      "seed": 2400,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Turbo Coast",
+      "biome": "sunset",
+      "file": "sunset/turbo_coast.ogg",
+      "prompt": "warm sunset synthwave, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 96,
+      "seed": 2401,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Polar Horizon",
+      "biome": "sunset",
+      "file": "sunset/polar_horizon.ogg",
+      "prompt": "warm sunset synthwave, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 96,
+      "seed": 2402,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Electric Glow",
+      "biome": "sunset",
+      "file": "sunset/electric_glow.ogg",
+      "prompt": "warm sunset synthwave, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 96,
+      "seed": 2403,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Static Skyline",
+      "biome": "sunset",
+      "file": "sunset/static_skyline.ogg",
+      "prompt": "warm sunset synthwave, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 96,
+      "seed": 2404,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Vapor Boulevard",
+      "biome": "sunset",
+      "file": "sunset/vapor_boulevard.ogg",
+      "prompt": "warm sunset synthwave, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 96,
+      "seed": 2405,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Vapor Runner",
+      "biome": "metropolis",
+      "file": "metropolis/vapor_runner.ogg",
+      "prompt": "night city synthwave, neon reflections, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 98,
+      "seed": 2500,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Turbo Dream",
+      "biome": "metropolis",
+      "file": "metropolis/turbo_dream.ogg",
+      "prompt": "night city synthwave, neon reflections, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 98,
+      "seed": 2501,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Crystal Overdrive",
+      "biome": "metropolis",
+      "file": "metropolis/crystal_overdrive.ogg",
+      "prompt": "night city synthwave, neon reflections, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 98,
+      "seed": 2502,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Solar Drift",
+      "biome": "metropolis",
+      "file": "metropolis/solar_drift.ogg",
+      "prompt": "night city synthwave, neon reflections, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 98,
+      "seed": 2503,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Golden Pulse",
+      "biome": "metropolis",
+      "file": "metropolis/golden_pulse.ogg",
+      "prompt": "night city synthwave, neon reflections, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 98,
+      "seed": 2504,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Silver Overdrive",
+      "biome": "metropolis",
+      "file": "metropolis/silver_overdrive.ogg",
+      "prompt": "night city synthwave, neon reflections, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 98,
+      "seed": 2505,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Hyper Velocity",
+      "biome": "desert",
+      "file": "desert/hyper_velocity.ogg",
+      "prompt": "open road desert synthwave, wide and airy, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 94,
+      "seed": 2600,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Neon Afterglow",
+      "biome": "desert",
+      "file": "desert/neon_afterglow.ogg",
+      "prompt": "open road desert synthwave, wide and airy, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 94,
+      "seed": 2601,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Cobalt Afterglow",
+      "biome": "desert",
+      "file": "desert/cobalt_afterglow.ogg",
+      "prompt": "open road desert synthwave, wide and airy, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 94,
+      "seed": 2602,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Hyper Boulevard",
+      "biome": "desert",
+      "file": "desert/hyper_boulevard.ogg",
+      "prompt": "open road desert synthwave, wide and airy, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 94,
+      "seed": 2603,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Hyper Frontier",
+      "biome": "desert",
+      "file": "desert/hyper_frontier.ogg",
+      "prompt": "open road desert synthwave, wide and airy, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 94,
+      "seed": 2604,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Radiant Highway",
+      "biome": "desert",
+      "file": "desert/radiant_highway.ogg",
+      "prompt": "open road desert synthwave, wide and airy, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 94,
+      "seed": 2605,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Coral Skyline",
+      "biome": "desert",
+      "file": "desert/coral_skyline.ogg",
+      "prompt": "open road desert synthwave, wide and airy, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 94,
+      "seed": 2606,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Midnight Highway",
+      "biome": "aurora",
+      "file": "aurora/midnight_highway.ogg",
+      "prompt": "starry night synthwave, spacey, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 90,
+      "seed": 2700,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Lunar Orbit",
+      "biome": "aurora",
+      "file": "aurora/lunar_orbit.ogg",
+      "prompt": "starry night synthwave, spacey, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 90,
+      "seed": 2701,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Lunar Highway",
+      "biome": "aurora",
+      "file": "aurora/lunar_highway.ogg",
+      "prompt": "starry night synthwave, spacey, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 90,
+      "seed": 2702,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Crystal Sunrise",
+      "biome": "aurora",
+      "file": "aurora/crystal_sunrise.ogg",
+      "prompt": "starry night synthwave, spacey, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 90,
+      "seed": 2703,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Static Drift",
+      "biome": "aurora",
+      "file": "aurora/static_drift.ogg",
+      "prompt": "starry night synthwave, spacey, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 90,
+      "seed": 2704,
+      "model": "ACE-Step 1.5 turbo"
+    },
+    {
+      "title": "Silver Sunrise",
+      "biome": "aurora",
+      "file": "aurora/silver_sunrise.ogg",
+      "prompt": "starry night synthwave, spacey, warm mellow dreamy synthwave, soft clean retro drum machine, gentle snare, lush analog pads, shimmering arpeggios, smooth round analog bass, relaxed steady groove, golden hour, classic 80s, instrumental",
+      "bpm": 90,
+      "seed": 2705,
+      "model": "ACE-Step 1.5 turbo"
+    }
+  ]
+}

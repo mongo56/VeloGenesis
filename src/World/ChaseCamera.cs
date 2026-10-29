@@ -13,6 +13,37 @@ public partial class ChaseCamera : Camera3D
     float _orbit;
     bool _init;
 
+    /// <summary>Debug (--inspect=right,up,back[,lookY[,lookFwd]]): fixed close-up at this offset from the rider, looking at height lookY (hips by default), lookFwd metres ahead.</summary>
+    public static Vector3? Inspect;
+    public static float InspectLookY = 0.95f, InspectLookFwd;
+
+    /// <summary>
+    /// Debug (--orbit): close-up camera circling the rider. Left-drag orbits, right-drag moves the look point
+    /// up / down, the wheel zooms.
+    /// </summary>
+    public static bool Orbit;
+    float _yaw = -1.9f, _pitch = 0.25f, _dist = 1.8f, _lookY = 1.15f;
+
+    public override void _UnhandledInput(InputEvent e)
+    {
+        if (!Orbit) return;
+        if (e is InputEventMouseMotion m)
+        {
+            if ((m.ButtonMask & MouseButtonMask.Left) != 0)
+            {
+                _yaw -= m.Relative.X * 0.008f;
+                _pitch = Math.Clamp(_pitch + m.Relative.Y * 0.006f, -0.6f, 1.4f);
+            }
+            else if ((m.ButtonMask & MouseButtonMask.Right) != 0)
+                _lookY = Math.Clamp(_lookY - m.Relative.Y * 0.004f, 0.1f, 1.9f);
+        }
+        else if (e is InputEventMouseButton b && b.Pressed)
+        {
+            if (b.ButtonIndex == MouseButton.WheelUp) _dist = Math.Max(0.4f, _dist * 0.9f);
+            else if (b.ButtonIndex == MouseButton.WheelDown) _dist = Math.Min(8f, _dist / 0.9f);
+        }
+    }
+
     public string ModeName => Mode.ToString().ToUpper();
 
     public void Cycle()
@@ -27,6 +58,24 @@ public partial class ChaseCamera : Camera3D
         var right = flat.Cross(Vector3.Up);
         Vector3 targetPos, targetLook;
         float lag = 5f;
+
+        if (Orbit)
+        {
+            // Orbit in the rider's frame (yaw 0 = straight behind), so it turns with the road.
+            var look = rider + Vector3.Up * _lookY;
+            var dir = (-flat * MathF.Cos(_yaw) + right * MathF.Sin(_yaw)) * MathF.Cos(_pitch) + Vector3.Up * MathF.Sin(_pitch);
+            GlobalPosition = look + dir * _dist;
+            LookAt(look, Vector3.Up);
+            Fov = 50f;
+            return;
+        }
+        if (Inspect is Vector3 io)
+        {
+            GlobalPosition = rider + right * io.X + Vector3.Up * io.Y - flat * io.Z;
+            LookAt(rider + Vector3.Up * InspectLookY + flat * (InspectLookFwd - 0.05f), Vector3.Up);
+            Fov = 40f;
+            return;
+        }
 
         switch (Mode)
         {

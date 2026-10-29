@@ -105,7 +105,8 @@ public partial class SettingsScreen : Screen
 
         v.AddChild(Section("AUDIO"));
         var src = new OptionButton();
-        string[] sources = { "Procedural", "Files", "Both", "External" };
+        string[] sources = { "Soundtrack", "Procedural", "Files", "Both", "External" };
+        src.AddItem("Soundtrack");
         src.AddItem("Procedural synthwave");
         src.AddItem("My music folder");
         src.AddItem("Both (shuffle)");
@@ -129,7 +130,9 @@ public partial class SettingsScreen : Screen
             liked.Visible = ytm.Visible = ext;
             musicHelp.Text = ext
                 ? "Play YouTube Music (or Spotify…) in your browser. Skip song controls it; the volume is set in the browser."
-                : "Drop .mp3 / .ogg / .wav files into Documents/VeloGenesis/Music.";
+                : s.MusicSource == "Soundtrack"
+                    ? "About 90 minutes of mellow 80s synthwave. Each biome has its own songs."
+                    : "Drop .mp3 / .ogg / .wav files into Documents/VeloGenesis/Music.";
         }
         ShowSource();
         src.ItemSelected += i => { s.MusicSource = sources[i]; ShowSource(); AudioChanged?.Invoke(); };

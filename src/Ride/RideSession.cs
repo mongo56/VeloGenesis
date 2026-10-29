@@ -121,6 +121,7 @@ public partial class RideSession : Node3D
         World.BiomeEntered += OnBiome;
         World.Init(Config, Quality.Get(s.Quality));
         _biomes.Add(World.Current.Biome.Name);
+        Music.EnterBiome(World.Current.BiomeIndex, fresh: false);
 
         _avatar = new RiderAvatar();
         AddChild(_avatar);
@@ -506,7 +507,7 @@ public partial class RideSession : Node3D
         GD.Print($"Biome: {b.Name} at {World.GlobalDist / 1000f:0.0} km");
         if (Attract) return;
         Music.Synth.SfxBiome();
-        Music.FreshSong();
+        Music.EnterBiome(Array.IndexOf(Biome.All, b));
         Hud?.Banner($"BIOME {_biomes.Count}  ·  {b.Tagline}", b.Name.ToUpper(), b.Rolling[0].Item1.Lightened(0.25f));
     }
 

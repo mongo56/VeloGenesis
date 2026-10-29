@@ -17,10 +17,14 @@ echo   1  Free ride        (simulator: W/S = power, Up/Down = gears)
 echo   2  ERG workout      (simulator: W/S = cadence, Up/Down = intensity)
 echo   3  Free ride, starting just before the first fork
 echo   4  Normal start     (main menu, uses your paired trainer)
+echo   5  Rider close-up, male    (mouse: left-drag orbit, right-drag up/down, wheel zoom)
+echo   6  Rider close-up, female
 echo.
 echo   In test rides: F6 / F7 = slower / faster time (1x 2x 4x 8x), F12 = screenshot
 echo.
-choice /c 1234 /n /m "Choose 1-4: "
+choice /c 123456 /n /m "Choose 1-6: "
+if errorlevel 6 (set "ARGS=--test --autoride=free --no-ble --orbit --female --sim-power=200" & goto run)
+if errorlevel 5 (set "ARGS=--test --autoride=free --no-ble --orbit --sim-power=200" & goto run)
 if errorlevel 4 (set "ARGS=" & goto run)
 if errorlevel 3 (set "ARGS=--test --autoride=free --no-ble --skip=600" & goto run)
 if errorlevel 2 (set "ARGS=--test --autoride=erg --no-ble" & goto run)

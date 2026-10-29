@@ -78,12 +78,21 @@ public partial class Main : Node
             else if (a.StartsWith("--skip=")) skip = float.Parse(a[7..], inv);
             else if (a.StartsWith("--finish-after=")) _finishAfter = double.Parse(a[15..], inv);
             else if (a.StartsWith("--camera=")) _cameraCycles = int.Parse(a[9..]);
+            else if (a.StartsWith("--inspect="))
+            {
+                var v = a[10..].Split(',');
+                World.ChaseCamera.Inspect = new Vector3(float.Parse(v[0], inv), float.Parse(v[1], inv), float.Parse(v[2], inv));
+                if (v.Length > 3) World.ChaseCamera.InspectLookY = float.Parse(v[3], inv);
+                if (v.Length > 4) World.ChaseCamera.InspectLookFwd = float.Parse(v[4], inv);
+            }
             else if (a.StartsWith("--seed=")) _seed = int.Parse(a[7..]);
             else if (a.StartsWith("--slip=")) _slip = int.Parse(a[7..]);
             else if (a == "--nohud") _noHud = true;
             else if (a == "--ghost") _ghostDbg = true;
             else if (a == "--self-ghost") _ghostDbg = _selfGhostDbg = true;
             else if (a == "--pack") _packDbg = true;
+            else if (a == "--female") World.RiderAvatar.DebugFemale = true;
+            else if (a == "--orbit") World.ChaseCamera.Orbit = true;
             else if (a == "--rhythm") _rhythmDbg = true;
             else if (a.StartsWith("--biome=")) World.CourseGenerator.DebugStartBiome = int.Parse(a[8..]);
             else if (a.StartsWith("--timescale="))Engine.TimeScale = double.Parse(a[12..], inv);

@@ -31,7 +31,7 @@ public class Settings
     public float TrainerDifficulty = 0.5f;
     public bool VirtualShifting = true;
 
-    public string MusicSource = "Procedural"; // Procedural, Files, Both, External
+    public string MusicSource = "Soundtrack"; // Soundtrack, Procedural, Files, Both, External
     public float MusicVolume = 0.5f;
     public float SfxVolume = 0.8f;
     public float WindVolume = 0.5f;
@@ -64,7 +64,7 @@ public class Settings
 
     /// <summary>Bumped when defaults change so saved settings can be migrated.</summary>
     public int Version;
-    const int CurrentVersion = 2;
+    const int CurrentVersion = 3;
 
     public static Settings Current { get; private set; } = new();
 
@@ -89,6 +89,11 @@ public class Settings
         {
             // v2: music default lowered from 70% to 50%.
             if (MathF.Abs(Current.MusicVolume - 0.7f) < 0.01f) Current.MusicVolume = 0.5f;
+        }
+        if (Current.Version < 3)
+        {
+            // v3: the generated soundtrack replaces the procedural synth as the default music.
+            if (Current.MusicSource == "Procedural") Current.MusicSource = "Soundtrack";
         }
         if (Current.Version != CurrentVersion)
         {

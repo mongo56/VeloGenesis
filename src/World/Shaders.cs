@@ -649,29 +649,26 @@ void fragment() {
 ");
 
     /// <summary>
-    /// Clothing / skin split along the part's local Y: colour_a below <c>split</c>, colour_b above,
-    /// with a faint coloured rim so the rider stays readable against the dark world.
+    /// The MakeHuman rider body: skin plus shorts (under the shorts), socks and gloves painted into the vertex
+    /// colours by tools/rider/export_rider.py (G shorts, B socks, A gloves), with the kit's coloured rim.
     /// </summary>
-    public static readonly Shader Kit = Make(@"
+    public static readonly Shader Body = Make(@"
 shader_type spatial;
-uniform vec3 color_a : source_color = vec3(0.8, 0.6, 0.45);
-uniform vec3 color_b : source_color = vec3(0.8, 0.6, 0.45);
-uniform float split = 100.0;
-uniform float rough_a = 0.6;
-uniform float rough_b = 0.6;
+uniform vec3 skin : source_color = vec3(0.56, 0.37, 0.26);
+uniform vec3 shorts : source_color = vec3(0.03, 0.03, 0.035);
+uniform vec3 socks : source_color = vec3(0.86, 0.87, 0.89);
+uniform vec3 gloves : source_color = vec3(0.02, 0.02, 0.025);
 uniform vec3 rim_color : source_color = vec3(0.1, 0.9, 1.0);
 uniform float rim = 0.35;
-varying float ly;
-void vertex() {
-    ly = VERTEX.y;
-}
 void fragment() {
-    float b = step(split, ly);
-    ALBEDO = mix(color_a, color_b, b);
-    ROUGHNESS = mix(rough_a, rough_b, b);
-    SPECULAR = 0.35;
+    vec4 k = smoothstep(vec4(0.42), vec4(0.58), COLOR); // seams are painted as ramps, 0.5 on the seam
+    float cloth = clamp(k.g + k.b + k.a, 0.0, 1.0);
+    vec3 kit = shorts * k.g + socks * k.b + gloves * k.a;
+    ALBEDO = mix(skin, kit / max(cloth, 1e-3), cloth);
+    ROUGHNESS = mix(0.55, 0.85, cloth);
+    SPECULAR = mix(0.4, 0.35, cloth);
     float f = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-    EMISSION = rim_color * f * rim;
+    EMISSION = rim_color * f * rim * (1.0 - k.g); // no glow on the shorts-painted skin (crotch, under the hems)
 }
 ");
 }
