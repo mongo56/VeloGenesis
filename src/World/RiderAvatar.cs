@@ -11,7 +11,7 @@ namespace VeloGenesis.World;
 public partial class RiderAvatar : Node3D
 {
     // Modern gravel race geometry (≈56 cm, 700x45 tan-wall tyres): steeply sloping top tube,
-    // dropped seat stays, long exposed seatpost, 415 mm stays, ≈1055 mm wheelbase.
+    // dropped seat stays, long exposed seatpost, 415 mm stays, ≈1105 mm wheelbase.
     const float WheelR = 0.36f, TyreW = 0.045f, RimDepth = 0.05f, Crank = 0.1725f;
     /// <summary>Stem length (steerer to bar centre), metres.</summary>
     const float Stem = 0.08f;
@@ -20,9 +20,10 @@ public partial class RiderAvatar : Node3D
     static readonly Vector3 SeatCluster = new(0, 0.77f, 0.108f);
     static readonly Vector3 SeatStayJoin = new(0, 0.645f, 0.08f);
     static readonly Vector3 HeadTop = new(0, 0.883f, -0.425f);
-    static readonly Vector3 HeadBottom = new(0, 0.682f, -0.507f);
+    // High enough on the steering axis that the fork crown clears the top of the tyre (0.72 m) by ~1.5 cm.
+    static readonly Vector3 HeadBottom = new(0, 0.79f, -0.463f);
     static readonly Vector3 RearHub = new(0, WheelR, 0.415f);
-    static readonly Vector3 FrontHub = new(0, WheelR, -0.64f);
+    static readonly Vector3 FrontHub = new(0, WheelR, -0.689f); // 47 mm fork rake ahead of the steering axis
     static readonly Vector3 SteererTop = new(0, 0.91f, -0.414f);
     static readonly Vector3 BarClamp = SteererTop + new Vector3(0, Stem * 0.17f, -Stem * 0.985f); // -10° stem
     static readonly Vector3 HoodOffset = new(0.207f, 0.022f, -0.068f);
@@ -52,7 +53,8 @@ public partial class RiderAvatar : Node3D
     static CylinderMesh _tube;
     static BoxMesh _box;
     static ArrayMesh _rimMesh, _rimDecal;
-    static PackedScene _saddleScene, _handlebarScene;
+    static PackedScene _saddleScene, _handlebarScene, _forkScene, _rotorScene, _caliperScene, _frameScene;
+    static System.Collections.Generic.Dictionary<string, Mesh> _drivetrain;
 
     public override void _Ready()
     {
@@ -171,25 +173,25 @@ public partial class RiderAvatar : Node3D
         _rear = Wheel(RearHub, true);
         _front = Wheel(FrontHub, false);
 
-        // Main triangle: fat down tube, slim top tube sloping down to a low seat cluster.
-        Tube(BB, HeadBottom + new Vector3(0, 0.01f, 0.005f), 0.03f, _frameMat);
-        Tube(BB + new Vector3(0, -0.01f, 0), SeatTubeTop, 0.018f, _frameMat);
-        Tube(SeatCluster, HeadTop + new Vector3(0, -0.025f, 0.012f), 0.017f, _frameMat);
-        Tube(HeadBottom + new Vector3(0, -0.025f, -0.01f), HeadTop + new Vector3(0, 0.025f, 0.01f), 0.026f, _frameMat);
-        // Bottom-bracket shell.
-        Part(_tube, _frameMat).Transform = new Transform3D(new Basis(Vector3.Back, Mathf.Pi / 2) * Basis.FromScale(new Vector3(0.026f, 0.085f, 0.026f)), BB);
-        foreach (int s in new[] { -1, 1 })
-        {
-            Tube(BB + new Vector3(s * 0.035f, 0, 0.02f), RearHub + new Vector3(s * 0.066f, 0, 0), 0.012f, _frameMat);
-            // Dropped seat stays meet the seat tube well below the top tube.
-            Tube(SeatStayJoin + new Vector3(s * 0.016f, 0, 0.012f), RearHub + new Vector3(s * 0.064f, 0.012f, 0), 0.009f, _frameMat);
-            // Carbon fork legs, raked forward to the hub.
-            var crown = HeadBottom + new Vector3(s * 0.048f, -0.04f, 0.005f);
-            var mid = crown.Lerp(FrontHub + new Vector3(s * 0.062f, 0, 0), 0.55f) + new Vector3(0, 0, -0.012f);
-            Tube(crown, mid, 0.016f, _frameMat);
-            Tube(mid, FrontHub + new Vector3(s * 0.062f, 0.015f, 0), 0.013f, _frameMat);
-        }
-        Tube(HeadBottom + new Vector3(-0.058f, -0.035f, 0), HeadBottom + new Vector3(0.058f, -0.035f, 0), 0.022f, _frameMat);
+        // Frame (tools/bike/make_frame.py): main triangle, bottom-bracket shell, stays and dropouts in one
+        // filleted mesh, plus the rear thru-axle.
+        _frameScene ??= GD.Load<PackedScene>("res://assets/bike/frame.glb");
+        var frame = _frameScene.Instantiate<Node3D>();
+        _rig.AddChild(frame);
+        foreach (var part in frame.GetChildren())
+            if (part is MeshInstance3D mi) mi.MaterialOverride = mi.Name == "Frame" ? _frameMat : _rubberMat;
+        // Head tube and carbon fork in one piece (tools/bike/make_fork.py): tapered oval blades, crown flaring
+        // out of the head tube, thru-axle.
+        _forkScene ??= GD.Load<PackedScene>("res://assets/bike/fork.glb");
+        var fork = _forkScene.Instantiate<Node3D>();
+        fork.Position = HeadBottom;
+        _rig.AddChild(fork);
+        foreach (var part in fork.GetChildren())
+            if (part is MeshInstance3D mi) mi.MaterialOverride = mi.Name == "Fork" ? _frameMat : _rubberMat;
+        // Flat-mount calipers on the back of the left fork leg and on top of the left chain stay
+        // (tools/bike/make_brakes.py), straddling the rotors' outer edge.
+        Caliper(FrontHub, FrontRotorR, new Vector2(0.72f, 0.69f));
+        Caliper(RearHub, RearRotorR, new Vector2(0.42f, -0.91f));
 
         // Cockpit: spacers, then the modelled stem, taped compact drop bar, hoods and levers
         // (tools/bike/make_handlebar.py; the bar follows the hand IK's hood and drop positions).
@@ -216,24 +218,40 @@ public partial class RiderAvatar : Node3D
         var tail = SeatTubeTop + (clamp - SeatTubeTop) * 0.5f + new Vector3(0, 0, 0.018f);
         Box(tail + new Vector3(0, -0.03f, 0), tail + new Vector3(0, 0.03f, 0), new Vector3(0.025f, 0, 0.012f), _tailMat);
 
-        // Drivetrain (1x): chainring + spider rotate with the cranks; chain to the cassette.
+        // Drivetrain (1x, tools/bike/make_drivetrain.py): chainring + spider rotate with the cranks; the chain
+        // runs from the ring to the cassette and back round the derailleur's jockey wheels.
         _spider = new Node3D { Position = BB + new Vector3(0.068f, 0, 0) };
         _rig.AddChild(_spider);
-        _spider.AddChild(new MeshInstance3D { Mesh = new TorusMesh { InnerRadius = 0.088f, OuterRadius = 0.104f, Rings = 40, RingSegments = 6 }, MaterialOverride = _steelMat, Rotation = new Vector3(0, 0, Mathf.Pi / 2) });
-        for (int i = 0; i < 4; i++)
-            _spider.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.008f, 0.17f, 0.018f) }, MaterialOverride = _rubberMat, Rotation = new Vector3(i * Mathf.Pi / 4, 0, 0) });
+        _spider.AddChild(new MeshInstance3D { Mesh = DrivetrainMesh("Chainring"), MaterialOverride = _steelMat });
+        _spider.AddChild(new MeshInstance3D { Mesh = DrivetrainMesh("Spider"), MaterialOverride = _rubberMat });
         var cog = new Vector3(0.068f, 0, 0);
-        Tube(BB + cog + new Vector3(0, 0.096f, 0), RearHub + cog + new Vector3(0, 0.05f, 0), 0.004f, _steelMat);
-        Tube(BB + cog + new Vector3(0, -0.096f, 0), RearHub + cog + new Vector3(0, -0.05f, 0), 0.004f, _steelMat);
-        var cass = new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 0.026f, BottomRadius = 0.056f, Height = 0.04f }, MaterialOverride = _steelMat, Position = RearHub + cog, Rotation = new Vector3(0, 0, Mathf.Pi / 2) };
-        _rig.AddChild(cass);
-        Box(RearHub + new Vector3(0.078f, -0.02f, 0.02f), RearHub + new Vector3(0.078f, -0.12f, -0.005f), new Vector3(0.016f, 0, 0.035f), _rubberMat); // derailleur
+        var upperJockey = RearHub + cog + new Vector3(0, -0.068f, 0.006f);
+        var lowerJockey = RearHub + cog + new Vector3(0, -0.128f, -0.018f);
+        Tube(BB + cog + new Vector3(0, 0.093f, 0), RearHub + cog + new Vector3(0, 0.041f, 0), 0.0035f, _steelMat);
+        Tube(BB + cog + new Vector3(0, -0.093f, 0), lowerJockey + new Vector3(0, -0.012f, 0), 0.0035f, _steelMat);
+        Tube(lowerJockey + new Vector3(0, 0, 0.012f), upperJockey + new Vector3(0, 0, 0.012f), 0.0035f, _steelMat);
+        Tube(upperJockey + new Vector3(0, 0.012f, 0), RearHub + cog + new Vector3(0, -0.041f, 0), 0.0035f, _steelMat);
+        Part(DrivetrainMesh("Cassette"), _steelMat).Position = RearHub + cog;
+        Part(DrivetrainMesh("Derailleur"), _rubberMat).Position = RearHub;
 
         for (int s = 0; s < 2; s++)
         {
-            _crankArm[s] = Tube(Vector3.Zero, Vector3.Up, 0.012f, _rubberMat);
-            _pedal[s] = Part(_box, _rubberMat);
+            _crankArm[s] = Part(DrivetrainMesh("CrankArm"), _rubberMat);
+            _pedal[s] = Part(DrivetrainMesh("Pedal"), _rubberMat);
         }
+    }
+
+    static Mesh DrivetrainMesh(string name)
+    {
+        if (_drivetrain == null)
+        {
+            _drivetrain = new();
+            var scene = GD.Load<PackedScene>("res://assets/bike/drivetrain.glb").Instantiate<Node3D>();
+            foreach (var part in scene.GetChildren())
+                if (part is MeshInstance3D mi) _drivetrain[mi.Name] = mi.Mesh;
+            scene.Free();
+        }
+        return _drivetrain[name];
     }
 
     Node3D Wheel(Vector3 hub, bool rear)
@@ -251,9 +269,29 @@ public partial class RiderAvatar : Node3D
         for (int i = 0; i < 12; i++)
             w.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.0025f, rimInner * 2f, 0.0025f) }, MaterialOverride = _spokeMat, Rotation = new Vector3(i * Mathf.Pi / 12f, 0, 0) });
         w.AddChild(new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 0.022f, BottomRadius = 0.022f, Height = 0.11f }, MaterialOverride = _rubberMat, Rotation = side });
-        // Disc rotor on the left.
-        w.AddChild(new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = rear ? 0.07f : 0.08f, BottomRadius = rear ? 0.07f : 0.08f, Height = 0.003f, RadialSegments = 32 }, MaterialOverride = _steelMat, Rotation = side, Position = new Vector3(-0.055f, 0, 0) });
+        // Disc rotor on the left: 160 mm front, 140 mm rear (tools/bike/make_brakes.py).
+        _rotorScene ??= GD.Load<PackedScene>("res://assets/bike/rotor.glb");
+        var rotor = _rotorScene.Instantiate<Node3D>();
+        rotor.Position = new Vector3(RotorX, 0, 0);
+        rotor.Scale = Vector3.One * ((rear ? RearRotorR : FrontRotorR) / FrontRotorR);
+        w.AddChild(rotor);
+        foreach (var part in rotor.GetChildren())
+            if (part is MeshInstance3D mi) mi.MaterialOverride = mi.Name == "Band" ? _steelMat : _carbonMat;
         return w;
+    }
+
+    const float FrontRotorR = 0.08f, RearRotorR = 0.07f, RotorX = -0.044f;
+
+    /// <summary>A brake caliper on the rotor's edge; dir is the (up, back) direction from the hub.</summary>
+    void Caliper(Vector3 hub, float rotorR, Vector2 dir)
+    {
+        _caliperScene ??= GD.Load<PackedScene>("res://assets/bike/caliper.glb");
+        var c = _caliperScene.Instantiate<Node3D>();
+        var d = dir.Normalized();
+        c.Transform = new Transform3D(new Basis(Vector3.Right, Mathf.Atan2(d.Y, d.X)), hub + new Vector3(RotorX, d.X * rotorR, d.Y * rotorR));
+        _rig.AddChild(c);
+        foreach (var part in c.GetChildren())
+            if (part is MeshInstance3D mi) mi.MaterialOverride = _rubberMat;
     }
 
     // ---------------------------------------------------------------- rider
@@ -309,14 +347,16 @@ public partial class RiderAvatar : Node3D
             float ca = a + i * Mathf.Pi;
             var crankDir = new Vector3(0, -MathF.Sin(ca), -MathF.Cos(ca));
             var axle = BB + new Vector3(side * 0.085f, 0, 0) + crankDir * Crank;
-            PlaceTube(_crankArm[i], BB + new Vector3(side * 0.08f, 0, 0), axle, 0.012f);
+            // The arm is modelled along +Y with the pedal spindle along +X; the left one is mirrored.
+            _crankArm[i].Transform = new Transform3D(new Basis(new Vector3(side, 0, 0), crankDir, Vector3.Right.Cross(crankDir)),
+                BB + new Vector3(side * 0.08f, 0, 0));
 
             // Ankling: the foot pivots on the pedal spindle (ball of the foot) instead of staying
             // flat. Toe-down angle ≈ 5° pushing over 3 o'clock, 20° at the bottom, 28° pulling
             // back through 9 o'clock and 13° coming over the top; heels drop a bit when standing.
             float toeDown = Mathf.DegToRad(16.5f - 11.5f * MathF.Cos(ca) + 3.5f * MathF.Sin(ca) - 5f * _stand);
             pitches[i] = new Basis(Vector3.Right, -toeDown);
-            _pedal[i].Transform = new Transform3D(pitches[i] * Basis.FromScale(new Vector3(0.085f, 0.018f, 0.075f)), axle + new Vector3(side * 0.045f, 0, 0));
+            _pedal[i].Transform = new Transform3D(pitches[i], axle + new Vector3(side * 0.045f, 0, 0));
             // Ball of the foot over the spindle, on top of the pedal and the shoe's sole.
             balls[i] = axle + new Vector3(side * 0.04f, 0, 0) + pitches[i] * new Vector3(0, BallAbovePedal, 0);
 

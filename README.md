@@ -195,8 +195,10 @@ The shader colours the kit, so team jerseys, AI riders and ghosts all share the 
 install Blender 4.2+ and the MPFB extension, add the asset packs *MakeHuman system assets*, *Shoes 02* and
 *Glasses 02*, *Shirts 01* and *Pants 03* from the [MakeHuman asset packs](https://static.makehumancommunity.org/assets/assetpacks.html)
 (MPFB → Apply assets → Library settings → Install asset pack), then run `blender -b -P tools/rider/export_rider.py`.
-The saddle and the cockpit (drop bar, tape, hoods, levers and stem) are modelled by
-`blender -b --factory-startup -P tools/bike/make_saddle.py` and `make_handlebar.py` (→ `assets/bike/`).
+The bike is modelled by `blender -b --factory-startup -P tools/bike/<script>` (→ `assets/bike/`): `make_frame.py`
+(frame), `make_fork.py` (head tube and fork), `make_brakes.py` (rotors and calipers), `make_drivetrain.py`
+(chainring, cranks, pedals, cassette, derailleur), `make_saddle.py` and `make_handlebar.py` (drop bar, tape,
+hoods, levers and stem).
 
 ## Files
 
@@ -222,7 +224,7 @@ src/Online/                 Strava OAuth (loopback redirect) + FIT upload
 src/Audio/                  soundtrack player, procedural synthwave engine (+ all sound effects), music director
 tools/music/                offline soundtrack generator (ACE-Step 1.5)
 tools/rider/                rider body export (Blender + MakeHuman's MPFB2 add-on → assets/rider/*.glb)
-tools/bike/                 saddle and handlebar models (Blender → assets/bike/*.glb)
+tools/bike/                 frame, fork, brakes, drivetrain, saddle and cockpit models (Blender → assets/bike/*.glb)
 src/UI/                     neon theme, HUD, graphs, menus
 ```
 
