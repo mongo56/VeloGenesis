@@ -35,6 +35,10 @@ public partial class MusicDirector : Node
     static bool External => Settings.Current.MusicSource == "External";
     static bool Ost => Settings.Current.MusicSource == "Soundtrack" && Soundtrack.Tracks.Count > 0;
 
+    /// <summary>Set by --mute, TestRide.bat debug runs (--test) and verification runs (--shot): silences music without touching the saved volume.</summary>
+    public static bool Muted;
+    static float MusicVolume => Muted ? 0f : Settings.Current.MusicVolume;
+
     public string NowPlaying { get; private set; } = "";
     public event Action<string> TrackChanged;
 
@@ -72,10 +76,10 @@ public partial class MusicDirector : Node
     public void ApplyVolume()
     {
         var s = Settings.Current;
-        Synth.MusicVolume = s.MusicVolume;
+        Synth.MusicVolume = MusicVolume;
         Synth.SfxVolume = s.SfxVolume;
         Synth.WindVolume = s.WindVolume;
-        _files.VolumeDb = Mathf.LinearToDb(Math.Max(0.0001f, s.MusicVolume));
+        _files.VolumeDb = Mathf.LinearToDb(Math.Max(0.0001f, MusicVolume));
         UpdateOstVolume();
     }
 
@@ -236,7 +240,7 @@ public partial class MusicDirector : Node
     void UpdateOstVolume()
     {
         for (int i = 0; i < 2; i++)
-            _ost[i].VolumeDb = Mathf.LinearToDb(Math.Max(0.0001f, Settings.Current.MusicVolume * _ostFade[i] * _ostFade[i]));
+            _ost[i].VolumeDb = Mathf.LinearToDb(Math.Max(0.0001f, MusicVolume * _ostFade[i] * _ostFade[i]));
     }
 
     static AudioStream Load(string path)

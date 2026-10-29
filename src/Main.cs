@@ -53,6 +53,7 @@ public partial class Main : Node
             if (a.StartsWith("--quality=")) Settings.Current.Quality = a[10..];
             else if (a.StartsWith("--aa=")) Settings.Current.AntiAliasing = a[5..];
             else if (a.StartsWith("--music=")) Settings.Current.MusicSource = a[8..];
+            else if (a is "--mute" or "--test" || a.StartsWith("--shot")) MusicDirector.Muted = true;
         InputSetup.Register();
         // Verification runs (--shot, --sfx-dump…) keep the default window instead of the saved mode.
         if (!OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--shot") || a.Contains("-dump=") || a == "--demo"))

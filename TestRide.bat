@@ -13,10 +13,10 @@ if errorlevel 1 (
 )
 
 echo.
-echo   1  Free ride        (simulator: W/S = power, Up/Down = gears)
-echo   2  ERG workout      (simulator: W/S = cadence, Up/Down = intensity)
-echo   3  Free ride, starting just before the first fork
-echo   4  Normal start     (main menu, uses your paired trainer)
+echo   1  Normal start     (main menu, uses your paired trainer)
+echo   2  Free ride        (simulator: W/S = power, Up/Down = gears)
+echo   3  ERG workout      (simulator: W/S = cadence, Up/Down = intensity)
+echo   4  Free ride, starting just before the first fork
 echo   5  Rider close-up, male    (mouse: left-drag orbit, right-drag up/down, wheel zoom)
 echo   6  Rider close-up, female
 echo.
@@ -25,10 +25,10 @@ echo.
 choice /c 123456 /n /m "Choose 1-6: "
 if errorlevel 6 (set "ARGS=--test --autoride=free --no-ble --orbit --female --sim-power=200" & goto run)
 if errorlevel 5 (set "ARGS=--test --autoride=free --no-ble --orbit --sim-power=200" & goto run)
-if errorlevel 4 (set "ARGS=" & goto run)
-if errorlevel 3 (set "ARGS=--test --autoride=free --no-ble --skip=600" & goto run)
-if errorlevel 2 (set "ARGS=--test --autoride=erg --no-ble" & goto run)
-set "ARGS=--test --autoride=free --no-ble"
+if errorlevel 4 (set "ARGS=--test --autoride=free --no-ble --skip=600" & goto run)
+if errorlevel 3 (set "ARGS=--test --autoride=erg --no-ble" & goto run)
+if errorlevel 2 (set "ARGS=--test --autoride=free --no-ble" & goto run)
+set "ARGS="
 
 :run
 "%GODOT%" --path . -- %ARGS%

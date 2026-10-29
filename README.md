@@ -228,7 +228,7 @@ src/UI/                     neon theme, HUD, graphs, menus
 
 Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|setup-erg|devices|settings|controls|strava|pause`,
 `--shot=out.png --shot-after=8`, `--skip=metres`, `--timescale=6`, `--sim-power=300`, `--seed=n`,
-`--quality=Low|Medium|High|Ultra`, `--music=Soundtrack|Procedural|Files|Both|External`, `--finish-after=sec`, `--camera=n`, `--no-ble`,
+`--quality=Low|Medium|High|Ultra`, `--music=Soundtrack|Procedural|Files|Both|External`, `--finish-after=sec`, `--camera=n`, `--no-ble`, `--mute` (no music; also implied by `--test` and `--shot`),
 `--female` (ride as a woman), `--orbit` (mouse-driven close-up camera on the rider: left-drag orbits, right-drag
 moves up / down, wheel zooms), `--inspect=right,up,back[,lookY[,lookFwd]]` (fixed close-up camera, metres).
 `TestRide.bat` options 5 and 6 start a male / female rider close-up.
