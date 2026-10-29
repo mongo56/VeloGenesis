@@ -98,6 +98,13 @@ public partial class Main : Node
                 GetTree().Quit();
                 return;
             }
+            else if (a.StartsWith("--sfx-dump="))
+            {
+                _music.Synth.RenderSfxToWav(a[11..]);
+                GD.Print("Sound effects rendered");
+                GetTree().Quit();
+                return;
+            }
 
         if (!noBle) DeviceManager.AutoConnect();
 
@@ -188,6 +195,10 @@ public partial class Main : Node
                 _ride?.Hud?.Toast($"TIME ×{Engine.TimeScale:0}", UiTheme.Cyan);
             }
         }
+
+        if (Input.IsActionJustPressed(InputSetup.Fullscreen))
+            DisplayServer.WindowSetMode(DisplayServer.WindowGetMode() is DisplayServer.WindowMode.Fullscreen or DisplayServer.WindowMode.ExclusiveFullscreen
+                ? DisplayServer.WindowMode.Windowed : DisplayServer.WindowMode.Fullscreen);
 
         if (Input.IsActionJustPressed(InputSetup.Screenshot))
         {

@@ -26,6 +26,71 @@ public partial class Screen : Control
 
     public void Focus() => FirstFocus?.GrabFocus();
 
+    /// <summary>Esc / gamepad B. Screens with a BACK button do the same here.</summary>
+    protected virtual void Cancel() { }
+
+    /// <summary>
+    /// Arrow-key / D-pad friendly number fields: a SpinBox behaves like a slider (← → change the value,
+    /// ↑ ↓ move to the next control) instead of swallowing every arrow press.
+    /// </summary>
+    public override void _Input(InputEvent e)
+    {
+        var focus = GetViewport().GuiGetFocusOwner();
+        if ((focus as SpinBox ?? focus?.GetParent() as SpinBox) is not { } spin)
+        {
+            if (focus is not Godot.Range) StepAlongRow(focus, e);
+            return;
+        }
+        if (e.IsActionPressed("ui_up", true) || e.IsActionPressed("ui_down", true))
+        {
+            var next = spin.FindValidFocusNeighbor(e.IsActionPressed("ui_up", true) ? Side.Top : Side.Bottom);
+            next?.GrabFocus();
+            GetViewport().SetInputAsHandled();
+        }
+        else if (e.IsActionPressed("ui_left", true) || e.IsActionPressed("ui_right", true))
+        {
+            spin.Value += e.IsActionPressed("ui_left", true) ? -spin.Step : spin.Step;
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
+    /// <summary>
+    /// ← → move to the neighbouring control in the same row (e.g. BACK ⇄ START across a spacer);
+    /// the engine's nearest-control search would otherwise jump to something above.
+    /// </summary>
+    void StepAlongRow(Control focus, InputEvent e)
+    {
+        int dir = e.IsActionPressed("ui_left", true) ? -1 : e.IsActionPressed("ui_right", true) ? 1 : 0;
+        if (dir == 0 || focus is LineEdit { } le && le.IsEditing() || focus?.GetParent() is not HBoxContainer row) return;
+        for (int i = focus.GetIndex() + dir; i >= 0 && i < row.GetChildCount(); i += dir)
+        {
+            if (row.GetChild(i) is not Control c || !c.IsVisibleInTree()) continue;
+            var target = c is SpinBox s ? s.GetLineEdit() : c;
+            if (target.FocusMode == FocusModeEnum.None || target is BaseButton { Disabled: true }) continue;
+            target.GrabFocus();
+            break;
+        }
+        GetViewport().SetInputAsHandled();
+    }
+
+    public override void _UnhandledInput(InputEvent e)
+    {
+        if (e.IsActionPressed("ui_cancel"))
+        {
+            GetViewport().SetInputAsHandled();
+            Cancel();
+            return;
+        }
+        // Focus got lost (a mouse click on empty space, a rebuilt list): the next arrow press brings it back.
+        bool nav = e.IsActionPressed("ui_up", true) || e.IsActionPressed("ui_down", true) || e.IsActionPressed("ui_left", true)
+            || e.IsActionPressed("ui_right", true) || e.IsActionPressed("ui_accept");
+        if (nav && GetViewport().GuiGetFocusOwner() == null)
+        {
+            GetViewport().SetInputAsHandled();
+            Focus();
+        }
+    }
+
     protected static Label Section(string text) => UiTheme.Label(text, 20, UiTheme.Magenta, bold: true);
 
     protected static HBoxContainer Row(string label, Control field, string help = null)
@@ -122,6 +187,7 @@ public partial class PauseMenu : Screen
         {
             ("Music", s.MusicVolume, x => s.MusicVolume = x),
             ("Effects", s.SfxVolume, x => s.SfxVolume = x),
+            ("Wind", s.WindVolume, x => s.WindVolume = x),
         })
         {
             var row = UiTheme.HBox(12);

@@ -59,18 +59,20 @@ public partial class StravaScreen : Screen
         v.AddChild(Row("After each ride", auto, "Off = use the UPLOAD TO STRAVA button on the ride summary."));
 
         v.AddChild(new Control { CustomMinimumSize = new Vector2(0, 8) });
-        var back = UiTheme.Button("◀  SAVE & BACK", () =>
-        {
-            Strava.CancelConnect();
-            Strava.SetApp(_id.Text, _secret.Text);
-            Settings.Save();
-            Back?.Invoke();
-        }, 24, 260);
+        var back = UiTheme.Button("◀  SAVE & BACK", Cancel, 24, 260);
         v.AddChild(back);
         FirstFocus = Strava.HasApp ? _connect : _id;
 
         Strava.Changed += Refresh;
         Refresh();
+    }
+
+    protected override void Cancel()
+    {
+        Strava.CancelConnect();
+        Strava.SetApp(_id.Text, _secret.Text);
+        Settings.Save();
+        Back?.Invoke();
     }
 
     public override void _ExitTree() => Strava.Changed -= Refresh;

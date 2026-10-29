@@ -26,6 +26,7 @@ public class Settings
     public string MusicSource = "Procedural"; // Procedural, Files, Both, External
     public float MusicVolume = 0.5f;
     public float SfxVolume = 0.8f;
+    public float WindVolume = 0.5f;
 
     /// <summary>Write a virtual GPS track (in the open ocean) to FIT files so Strava draws a map.</summary>
     public bool VirtualGps = false;

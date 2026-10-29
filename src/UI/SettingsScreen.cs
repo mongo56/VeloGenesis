@@ -95,6 +95,7 @@ public partial class SettingsScreen : Screen
         v.AddChild(musicRow);
         v.AddChild(Row("Music volume", UiTheme.VolumeSlider(s.MusicVolume, x => { s.MusicVolume = x; VolumeChanged?.Invoke(); })));
         v.AddChild(Row("Effects volume", UiTheme.VolumeSlider(s.SfxVolume, x => { s.SfxVolume = x; VolumeChanged?.Invoke(); })));
+        v.AddChild(Row("Wind volume", UiTheme.VolumeSlider(s.WindVolume, x => { s.WindVolume = x; VolumeChanged?.Invoke(); }), "Air rushing past – rises with your speed and when you sprint."));
 
         v.AddChild(Section("EXPORT"));
         var gps = new CheckButton { Text = "Virtual GPS track", ButtonPressed = s.VirtualGps };
@@ -102,13 +103,19 @@ public partial class SettingsScreen : Screen
         v.AddChild(Row("FIT files", gps, "Adds map coordinates (in the open ocean) so Strava draws your route. Off = indoor ride without a map."));
 
         var buttons = UiTheme.HBox(16);
-        var back = UiTheme.Button("◀  SAVE & BACK", () => { Settings.Save(); Back?.Invoke(); }, 24, 260);
+        var back = UiTheme.Button("◀  SAVE & BACK", Cancel, 24, 260);
         buttons.AddChild(back);
         buttons.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         buttons.AddChild(UiTheme.Button(Online.Strava.Connected ? "STRAVA  ✓" : "STRAVA", () => { Settings.Save(); OpenStrava?.Invoke(); }, 22));
         buttons.AddChild(UiTheme.Button("⌨  CONTROLS / KEY BINDINGS", () => { Settings.Save(); OpenControls?.Invoke(); }, 22));
         v.AddChild(buttons);
         FirstFocus = ftp.GetLineEdit();
+    }
+
+    protected override void Cancel()
+    {
+        Settings.Save();
+        Back?.Invoke();
     }
 
     public event Action QualityChanged, AudioChanged, VolumeChanged, OpenControls, OpenStrava, AntiAliasingChanged;

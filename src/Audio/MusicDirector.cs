@@ -57,6 +57,7 @@ public partial class MusicDirector : Node
         var s = Settings.Current;
         Synth.MusicVolume = s.MusicVolume;
         Synth.SfxVolume = s.SfxVolume;
+        Synth.WindVolume = s.WindVolume;
         _files.VolumeDb = Mathf.LinearToDb(Math.Max(0.0001f, s.MusicVolume));
     }
 

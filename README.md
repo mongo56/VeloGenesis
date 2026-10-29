@@ -97,13 +97,14 @@ All bindings can be changed in **Settings → Controls / Key bindings** (default
 
 | Action | Keyboard | Gamepad |
 |---|---|---|
-| Gear up / down | ↑ ↓ or E / Q | RB / LB, D-pad ↑↓ |
+| Gear up / down | I / K or ↑ ↓ | RB / LB, D-pad ↑↓ |
 | Choose fork branch | ← → or A / D | D-pad ←→, left stick |
-| Slipstream power-up | Space / B | A / X |
+| Slipstream power-up | Space / Enter | A / X |
 | Camera | C | Y |
 | Screenshot | F12 | |
 | Test rides only: time slower / faster (1×–8×) | F6 / F7 | |
-| Toggle HUD | H | |
+| Toggle HUD | U / H | |
+| Fullscreen / window | F11 | |
 | Skip song | N | Back |
 | Pause | Esc / P | Start |
 | Simulator power | W / S | Triggers |

@@ -112,6 +112,8 @@ public partial class SetupScreen : Screen
         SetMode(_mode);
     }
 
+    protected override void Cancel() => Back?.Invoke();
+
     static Button ModeButton(string text, ButtonGroup group)
     {
         var b = UiTheme.Button(text, null, 26);

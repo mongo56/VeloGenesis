@@ -82,7 +82,7 @@ public partial class SummaryScreen : Screen
         _stravaStatus.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _stravaStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         row.AddChild(_stravaStatus);
-        var done = UiTheme.Button("MAIN MENU  ▶", () => Done?.Invoke(), 28, 280);
+        var done = UiTheme.Button("MAIN MENU  ▶", Cancel, 28, 280);
         row.AddChild(done);
         FirstFocus = done;
         v.AddChild(row);
@@ -104,6 +104,8 @@ public partial class SummaryScreen : Screen
     HBoxContainer _pasteRow;
     string _activityUrl;
     bool _uploading;
+
+    protected override void Cancel() => Done?.Invoke();
 
     void Status(string text, Color color)
     {

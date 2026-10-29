@@ -54,7 +54,7 @@ public partial class DevicesScreen : Screen
         srow.AddChild(_scanStatus);
         v.AddChild(srow);
 
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { FollowFocus = true, SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         _list = UiTheme.VBox(6);
         _list.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         scroll.AddChild(_list);
@@ -64,7 +64,7 @@ public partial class DevicesScreen : Screen
         help.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         v.AddChild(help);
 
-        var back = UiTheme.Button("◀  BACK", () => { DeviceManager.Scanner.Stop(); Back?.Invoke(); }, 24, 200);
+        var back = UiTheme.Button("◀  BACK", Cancel, 24, 200);
         v.AddChild(back);
         FirstFocus = _scanBtn;
 
@@ -79,6 +79,12 @@ public partial class DevicesScreen : Screen
         DeviceManager.Changed -= Refresh;
         DeviceManager.Scanner.Changed -= RebuildList;
         DeviceManager.Scanner.Stop();
+    }
+
+    protected override void Cancel()
+    {
+        DeviceManager.Scanner.Stop();
+        Back?.Invoke();
     }
 
     void ToggleScan()
@@ -105,7 +111,16 @@ public partial class DevicesScreen : Screen
         var sc = DeviceManager.Scanner;
         _scanBtn.Text = sc.Scanning ? "STOP SCAN" : "SCAN";
         _scanStatus.Text = sc.Error != "" ? sc.Error : sc.Scanning ? "Scanning…" : "";
+        // The list is rebuilt while scanning: remember which button had focus so a gamepad user keeps their place.
+        var focus = GetViewport().GuiGetFocusOwner();
+        int focusRow = -1, focusCol = 0;
+        if (focus != null && _list.IsAncestorOf(focus))
+        {
+            focusRow = focus.GetParent().GetIndex();
+            focusCol = focus.GetIndex();
+        }
         foreach (var c in _list.GetChildren()) c.QueueFree();
+        int old = _list.GetChildCount();
         foreach (var d in sc.Devices)
         {
             if (!d.IsTrainer && !d.IsHeartRate && !_showAll.ButtonPressed) continue;
@@ -121,6 +136,11 @@ public partial class DevicesScreen : Screen
                 row.AddChild(UiTheme.Button("USE AS HR", () => { sc.Stop(); _ = DeviceManager.ConnectHr(dev.Address, dev.Name); }, 18));
             _list.AddChild(row);
         }
+        if (focusRow < 0) return;
+        int rows = _list.GetChildCount() - old;
+        if (rows == 0) { _scanBtn.GrabFocus(); return; }
+        var target = _list.GetChild(old + Math.Min(focusRow, rows - 1));
+        ((Control)target.GetChild(Math.Min(focusCol, target.GetChildCount() - 1))).GrabFocus();
     }
 
     public override void _Process(double delta)

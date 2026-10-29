@@ -34,7 +34,7 @@ public partial class ControlsScreen : Screen
         header.AddChild(Col(UiTheme.Label("GAMEPAD 2", 18, UiTheme.Magenta, bold: true), 210));
         v.AddChild(header);
 
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { FollowFocus = true, SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         _rows = UiTheme.VBox(6);
         _rows.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         scroll.AddChild(_rows);
@@ -42,7 +42,7 @@ public partial class ControlsScreen : Screen
 
         _status = UiTheme.Label("", 19, UiTheme.Amber);
         v.AddChild(_status);
-        var help = UiTheme.Label("Click a slot, then press the new key or gamepad button.  Esc cancels  ·  Delete / Backspace clears the slot.  " +
+        var help = UiTheme.Label("Select a slot (click or Enter), then press the new key or gamepad button.  Esc cancels  ·  Delete / Backspace clears the slot.  " +
                                  "A key can only belong to one action – assigning it moves it.  The left stick (forks) and triggers (simulator power) always work too.", 16, UiTheme.Dim);
         help.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         v.AddChild(help);
@@ -56,6 +56,8 @@ public partial class ControlsScreen : Screen
         FirstFocus = back;
         Rebuild();
     }
+
+    protected override void Cancel() => Back?.Invoke();
 
     static Control Col(Control c, float width)
     {
@@ -98,14 +100,18 @@ public partial class ControlsScreen : Screen
 
     void StopListening()
     {
+        var (action, slot, pad) = (_listenAction, _listenSlot, _listenPad);
         _listenAction = null;
         _listenButton = null;
         Rebuild();
+        // Keep the cursor on the slot that was just edited (the old buttons are gone).
+        int row = Array.FindIndex(InputSetup.Bindings, b => b.Action == action);
+        if (row >= 0) ((Control)_rows.GetChild(_rows.GetChildCount() - InputSetup.Bindings.Length + row).GetChild(1 + (pad ? InputSetup.Slots : 0) + slot)).GrabFocus();
     }
 
     public override void _Input(InputEvent e)
     {
-        if (_listenAction == null) return;
+        if (_listenAction == null) { base._Input(e); return; }
         // Ignore the press that opened the slot (e.g. gamepad A / Enter).
         if (Time.GetTicksMsec() - _listenStartMs < 200) return;
 

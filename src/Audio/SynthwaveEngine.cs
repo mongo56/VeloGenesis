@@ -28,6 +28,9 @@ public partial class SynthwaveEngine : Node
     public bool MusicOn = true;
     public float MusicVolume = 0.5f;
     public float SfxVolume = 0.8f;
+    public float WindVolume = 0.5f;
+    /// <summary>0..1 – air rushing past the rider (speed); <see cref="Sprint"/> 0..1 adds gusty bite on top.</summary>
+    public float Wind, Sprint;
     public string SongTitle { get; private set; } = "";
     public event Action<string> SongChanged;
 
@@ -165,7 +168,6 @@ public partial class SynthwaveEngine : Node
     readonly float[] _dlL = new float[SR * 2], _dlR = new float[SR * 2];
     int _dlPos;
 
-    sealed class Sfx { public float F0, F1, Dur, Vol, T, Delay; public bool Square; public double Phase; }
     readonly List<Sfx> _sfx = new();
     readonly object _sfxLock = new();
 
@@ -780,9 +782,9 @@ public partial class SynthwaveEngine : Node
         L *= mg;
         R *= mg;
 
-        float fx = RenderSfx();
-        L += fx * SfxVolume;
-        R += fx * SfxVolume;
+        var fx = RenderSfx() * SfxVolume + RenderWind() * WindVolume;
+        L += fx.X;
+        R += fx.Y;
         return new Vector2(MathF.Tanh(L), MathF.Tanh(R));
     }
 
@@ -806,9 +808,31 @@ public partial class SynthwaveEngine : Node
         }
     }
 
-    float RenderSfx()
+    // ------------------------------------------------------------------ sound effects
+    //
+    // Effects are built from a few soft voices instead of raw beeps: FM bells and electric-piano
+    // keys, warm detuned pads, band-passed noise whooshes and filtered clicks, all in tune with
+    // each other and sent through a short stereo room so they sit in the mix rather than on top.
+
+    enum Voice { Bell, Keys, Pad, Whoosh, Click, Thump }
+
+    sealed class Sfx
     {
-        float sum = 0;
+        public Voice Voice;
+        public float F0, F1, Dur, Vol, Pan, T, Delay;
+        public double P1, P2, P3, P4;
+        public readonly Svf Filter = new();
+    }
+
+    readonly float[] _fxL = new float[SR / 2], _fxR = new float[SR / 2];
+    int _fxPos;
+    float _fxLpL, _fxLpR;
+
+    const float SfxGain = 4.5f;
+
+    Vector2 RenderSfx()
+    {
+        float l = 0, r = 0;
         lock (_sfxLock)
         {
             for (int k = _sfx.Count - 1; k >= 0; k--)
@@ -817,113 +841,320 @@ public partial class SynthwaveEngine : Node
                 if (s.Delay > 0) { s.Delay -= Dt; continue; }
                 float p = s.T / s.Dur;
                 if (p >= 1) { _sfx.RemoveAt(k); continue; }
-                float f = s.F0 + (s.F1 - s.F0) * p;
-                float env = MathF.Min(1f, s.T * 400f) * (1f - p) * (1f - p);
-                float w;
-                if (s.Square) w = Pulse(ref s.Phase, f) * 0.5f;
-                else
-                {
-                    w = MathF.Sin((float)(s.Phase * Math.Tau));
-                    s.Phase += f * Dt;
-                    if (s.Phase > 1) s.Phase -= 1;
-                }
-                sum += w * env * s.Vol;
+                float w = Voiced(s, p) * s.Vol;
+                l += w * MathF.Sqrt(0.5f * (1f - s.Pan));
+                r += w * MathF.Sqrt(0.5f * (1f + s.Pan));
                 s.T += Dt;
             }
         }
-        return sum;
+
+        // Small cross-fed stereo room with darkened feedback.
+        int pl = (_fxPos - (int)(SR * 0.137f) + _fxL.Length) % _fxL.Length;
+        int pr = (_fxPos - (int)(SR * 0.191f) + _fxR.Length) % _fxR.Length;
+        _fxLpL = Approach(_fxLpL, _fxL[pl], 0.25f);
+        _fxLpR = Approach(_fxLpR, _fxR[pr], 0.25f);
+        _fxL[_fxPos] = l * 0.3f + _fxLpR * 0.42f;
+        _fxR[_fxPos] = r * 0.3f + _fxLpL * 0.42f;
+        _fxPos = (_fxPos + 1) % _fxL.Length;
+        return new Vector2(l + _fxLpL * 0.6f, r + _fxLpR * 0.6f) * SfxGain;
     }
 
-    void Play(float f0, float f1, float dur, float vol, bool square = false, float delay = 0)
+    // ---- wind: two decorrelated noise channels, low-passed so it's a soft rush rather than hiss.
+    // Speed opens the filter and raises the level; gusts drift slowly so it never sounds like a loop.
+
+    readonly Svf _windL = new(), _windR = new(), _windHiL = new(), _windHiR = new();
+    float _wind, _sprint, _windPink;
+    double _gustA, _gustB;
+
+    Vector2 RenderWind()
     {
-        lock (_sfxLock) _sfx.Add(new Sfx { F0 = f0, F1 = f1, Dur = dur, Vol = vol, Square = square, Delay = delay });
+        _wind = Approach(_wind, Math.Clamp(Wind, 0f, 1f), 0.00004f);
+        _sprint = Approach(_sprint, Math.Clamp(Sprint, 0f, 1f), 0.00003f);
+        if (_wind < 0.002f && _sprint < 0.002f) return Vector2.Zero;
+
+        _gustA += 0.11 * Dt;
+        _gustB += 0.29 * Dt;
+        float gust = 0.9f + 0.06f * MathF.Sin((float)(_gustA * Math.Tau)) + 0.04f * MathF.Sin((float)(_gustB * Math.Tau) + 1.3f)
+            + _sprint * 0.06f * MathF.Sin((float)(_gustB * Math.Tau * 2.7));
+        float cutoff = (180f + 750f * _wind + 250f * _sprint) * gust;
+        _windPink = Approach(_windPink, Noise(), 0.12f); // shared low rumble keeps the stereo image centred
+        float nl = Noise() * 0.7f + _windPink, nr = Noise() * 0.7f + _windPink;
+        _windL.Run(nl, cutoff, 1.1f);
+        _windR.Run(nr, cutoff * 1.07f, 1.1f);
+        // A faint airy band higher up, mostly when sprinting.
+        _windHiL.Run(nl, 2600f * gust, 0.9f);
+        _windHiR.Run(nr, 2900f * gust, 0.9f);
+        float level = MathF.Pow(_wind, 1.6f) * (1f + 0.15f * _sprint) * gust;
+        float hi = (0.06f + 0.12f * _sprint) * _wind;
+        return new Vector2(_windL.Low + _windHiL.Band * hi, _windR.Low + _windHiR.Band * hi) * (level * 0.22f);
     }
 
-    public void SfxShiftUp() => Play(700, 1100, 0.07f, 0.25f, true);
-    public void SfxShiftDown() => Play(1000, 600, 0.07f, 0.25f, true);
-    public void SfxUi() => Play(1200, 1500, 0.05f, 0.18f);
-    public void SfxForkSelect() { Play(660, 660, 0.09f, 0.3f, true); Play(990, 990, 0.12f, 0.3f, true, 0.09f); }
-    public void SfxCountdown(bool final) => Play(final ? 1320 : 880, final ? 1320 : 880, final ? 0.35f : 0.12f, 0.35f);
-    public void SfxGel() { Play(1046, 1046, 0.12f, 0.3f); Play(1318, 1318, 0.12f, 0.3f, false, 0.07f); Play(1568, 1568, 0.25f, 0.3f, false, 0.14f); }
-    public void SfxSector() { Play(220, 440, 0.5f, 0.25f, true); Play(330, 660, 0.5f, 0.2f, true, 0.12f); }
+    static float Sine(ref double phase, float freq)
+    {
+        phase += freq * Dt;
+        if (phase >= 1) phase -= 1;
+        return MathF.Sin((float)(phase * Math.Tau));
+    }
+
+    float Voiced(Sfx s, float p)
+    {
+        float t = s.T;
+        // Exponential glide sounds even across the range (a linear one rushes the low end).
+        float f = s.F1 == s.F0 ? s.F0 : s.F0 * MathF.Pow(s.F1 / s.F0, p * p * (3f - 2f * p));
+        float attack = MathF.Min(1f, t * 250f);
+        switch (s.Voice)
+        {
+            case Voice.Bell:
+            {
+                // FM with an inharmonic modulator: glassy strike that mellows as it rings.
+                float idx = 2.2f * MathF.Exp(-t * 9f) + 0.25f;
+                float mod = Sine(ref s.P2, f * 3.5f) * idx;
+                s.P1 += f * Dt;
+                if (s.P1 >= 1) s.P1 -= 1;
+                float body = MathF.Sin((float)(s.P1 * Math.Tau) + mod);
+                float shimmer = Sine(ref s.P3, f * 2.001f) * 0.18f * MathF.Exp(-t * 6f);
+                return (body + shimmer) * attack * MathF.Exp(-4.6f * p);
+            }
+            case Voice.Keys:
+            {
+                // Electric-piano tine: 1:1 FM that starts bright and settles to a round tone.
+                float idx = 1.6f * MathF.Exp(-t * 14f) + 0.15f;
+                float mod = Sine(ref s.P2, f) * idx;
+                s.P1 += f * Dt;
+                if (s.P1 >= 1) s.P1 -= 1;
+                float tine = MathF.Sin((float)(s.P1 * Math.Tau) + mod);
+                float bark = Sine(ref s.P3, f * 7f) * 0.06f * MathF.Exp(-t * 60f);
+                return (tine + bark) * attack * MathF.Exp(-3.6f * p);
+            }
+            case Voice.Pad:
+            {
+                // Three detuned saws through a low-pass that opens with the swell.
+                float swell = MathF.Pow(MathF.Sin(MathF.PI * p), 1.4f);
+                float raw = (Saw(ref s.P1, f) + Saw(ref s.P2, f * 1.006f) + Saw(ref s.P3, f * 0.994f)) / 3f;
+                s.Filter.Run(raw, f * 1.5f + 2200f * swell, 1.2f);
+                return s.Filter.Low * swell;
+            }
+            case Voice.Whoosh:
+            {
+                float env = MathF.Pow(MathF.Sin(MathF.PI * MathF.Sqrt(p)), 2f);
+                s.Filter.Run(Noise(), f, 0.55f);
+                return s.Filter.Band * env * 3.2f;
+            }
+            case Voice.Click:
+            {
+                // Short filtered tick with a tiny tonal knock under it – like a well-oiled shifter.
+                s.Filter.Run(Noise(), f, 0.35f);
+                float knock = Sine(ref s.P2, f * 0.25f) * MathF.Exp(-t * 180f) * 0.5f;
+                return (s.Filter.Band * MathF.Exp(-t * 420f) * 2.5f + knock) * MathF.Min(1f, t * 2000f);
+            }
+            case Voice.Thump:
+            {
+                float pitch = f * (0.55f + 0.45f * MathF.Exp(-t * 30f));
+                return Sine(ref s.P1, pitch) * attack * MathF.Exp(-4f * p);
+            }
+        }
+        return 0;
+    }
+
+    void Play(Voice v, float f0, float f1, float dur, float vol, float delay = 0, float pan = 0)
+    {
+        lock (_sfxLock) _sfx.Add(new Sfx { Voice = v, F0 = f0, F1 = f1, Dur = dur, Vol = vol, Delay = delay, Pan = pan });
+    }
+
+    void Note(Voice v, float f, float dur, float vol, float delay = 0, float pan = 0) => Play(v, f, f, dur, vol, delay, pan);
+
+    // Notes used below (A minor / C major family so the cues agree with each other).
+    const float A2 = 110f, E3 = 164.81f, A3 = 220f, C4 = 261.63f, E4 = 329.63f, G4 = 392f, A4 = 440f, B4 = 493.88f,
+        C5 = 523.25f, D5 = 587.33f, E5 = 659.25f, G5 = 783.99f, A5 = 880f, B5 = 987.77f, C6 = 1046.5f, D6 = 1174.66f, E6 = 1318.51f, G6 = 1567.98f;
+
+    public void SfxShiftUp() { Note(Voice.Click, 3400, 0.06f, 0.16f); Note(Voice.Keys, D6, 0.16f, 0.035f, 0.005f); }
+    public void SfxShiftDown() { Note(Voice.Click, 2200, 0.06f, 0.16f); Note(Voice.Keys, A5, 0.16f, 0.035f, 0.005f); }
+    public void SfxUi() { Note(Voice.Click, 3000, 0.05f, 0.1f); Note(Voice.Keys, G5, 0.12f, 0.03f); }
+    public void SfxForkSelect()
+    {
+        Note(Voice.Keys, D5, 0.5f, 0.12f, 0, -0.2f);
+        Note(Voice.Keys, A5, 0.7f, 0.11f, 0.08f, 0.2f);
+        Play(Voice.Whoosh, 500, 2600, 0.45f, 0.06f);
+    }
+    public void SfxCountdown(bool final)
+    {
+        if (!final) { Note(Voice.Bell, A5, 0.7f, 0.13f); return; }
+        Note(Voice.Bell, A5, 1.4f, 0.12f, 0, -0.25f);
+        Note(Voice.Bell, E6, 1.4f, 0.09f, 0, 0.25f);
+        Note(Voice.Thump, 110, 0.45f, 0.22f);
+    }
+
+    /// <summary>Power gel: a sparkle swept upwards and a bright G-major chime.</summary>
+    public void SfxGel()
+    {
+        Play(Voice.Whoosh, 900, 6000, 0.4f, 0.07f);
+        Note(Voice.Bell, G5, 1.1f, 0.09f, 0.04f, -0.35f);
+        Note(Voice.Bell, B5, 1.1f, 0.08f, 0.09f, 0f);
+        Note(Voice.Bell, D6, 1.3f, 0.08f, 0.14f, 0.35f);
+    }
+
+    public void SfxSector()
+    {
+        Note(Voice.Pad, A3, 1.4f, 0.1f, 0, -0.3f);
+        Note(Voice.Pad, E4, 1.4f, 0.08f, 0.08f, 0.3f);
+        Play(Voice.Whoosh, 300, 1600, 1f, 0.05f);
+    }
 
     public void SfxSlipstream(bool on)
     {
-        if (on) { Play(180, 1400, 0.7f, 0.22f, true); Play(360, 2200, 0.7f, 0.12f, false, 0.05f); }
-        else Play(900, 300, 0.4f, 0.15f, true);
+        if (on)
+        {
+            Play(Voice.Whoosh, 250, 4200, 1.1f, 0.13f);
+            Play(Voice.Pad, A2, A3, 1.2f, 0.09f);
+            Note(Voice.Thump, 80, 0.5f, 0.28f);
+            Note(Voice.Bell, E6, 1.2f, 0.05f, 0.75f, 0.3f);
+        }
+        else Play(Voice.Whoosh, 2800, 300, 0.7f, 0.09f);
     }
 
-    public void SfxKm() => Play(1760, 1760, 0.2f, 0.18f);
+    public void SfxKm() => Note(Voice.Bell, E6, 1.2f, 0.1f);
 
     // ---- event cues: each has its own recognisable shape so it reads without looking at the screen.
 
-    /// <summary>Two rising tones: a fork is coming up.</summary>
-    public void SfxForkAhead() { Play(523, 523, 0.14f, 0.22f, true); Play(784, 784, 0.2f, 0.22f, true, 0.16f); }
+    /// <summary>Two rising keys notes: a fork is coming up.</summary>
+    public void SfxForkAhead() { Note(Voice.Keys, C5, 0.55f, 0.15f, 0, -0.2f); Note(Voice.Keys, G5, 0.8f, 0.15f, 0.18f, 0.2f); }
 
-    /// <summary>Race start: three ticks and a long high "go".</summary>
+    /// <summary>Race start: three soft bells and a fuller "go".</summary>
     public void SfxRaceStart()
     {
-        for (int i = 0; i < 3; i++) Play(660, 660, 0.1f, 0.28f, true, i * 0.45f);
-        Play(1320, 1320, 0.5f, 0.3f, true, 1.35f);
+        for (int i = 0; i < 3; i++) Note(Voice.Bell, E5, 0.5f, 0.12f, i * 0.45f);
+        Note(Voice.Bell, E6, 1.6f, 0.11f, 1.35f, -0.2f);
+        Note(Voice.Keys, A5, 1.2f, 0.09f, 1.35f, 0.2f);
+        Note(Voice.Thump, 100, 0.5f, 0.25f, 1.35f);
+        Play(Voice.Whoosh, 400, 3500, 0.8f, 0.07f, 1.35f);
     }
 
-    /// <summary>Overtake: a rising swoop when you pass, a falling one when you're passed.</summary>
+    /// <summary>Overtake: an air rush past you plus a bright note; or a rush the other way and a low note.</summary>
     public void SfxOvertake(bool you)
     {
-        if (you) { Play(420, 980, 0.22f, 0.24f); Play(1318, 1318, 0.16f, 0.2f, false, 0.2f); }
-        else { Play(820, 330, 0.3f, 0.22f, true); }
+        if (you) { Play(Voice.Whoosh, 500, 3200, 0.45f, 0.09f, 0, 0.3f); Note(Voice.Bell, D6, 0.9f, 0.07f, 0.2f, 0.2f); }
+        else { Play(Voice.Whoosh, 3000, 450, 0.55f, 0.09f, 0, -0.3f); Note(Voice.Keys, E4, 0.7f, 0.1f, 0.1f); }
     }
 
     /// <summary>Bell for the last 200 m of a race.</summary>
-    public void SfxRaceFinal() { Play(1568, 1568, 0.12f, 0.26f); Play(1568, 1568, 0.12f, 0.26f, false, 0.16f); Play(2093, 2093, 0.4f, 0.24f, false, 0.32f); }
+    public void SfxRaceFinal()
+    {
+        Note(Voice.Bell, A5, 1f, 0.12f, 0, -0.2f);
+        Note(Voice.Bell, A5, 1.6f, 0.12f, 0.28f, 0.2f);
+        Note(Voice.Bell, E6, 1.6f, 0.06f, 0.28f, 0.2f);
+    }
 
-    /// <summary>Soft sonar ping with an echo: a draft pack is up the road.</summary>
-    public void SfxPackSpotted() { Play(880, 860, 0.35f, 0.2f); Play(880, 860, 0.35f, 0.08f, false, 0.4f); }
+    /// <summary>Sonar ping with an echo: a draft pack is up the road.</summary>
+    public void SfxPackSpotted() { Play(Voice.Bell, G5, 780f, 1.3f, 0.09f, 0, -0.3f); Play(Voice.Bell, G5, 780f, 1.2f, 0.035f, 0.42f, 0.4f); }
 
-    /// <summary>Whoosh down into the slipstream of a pack, or back up out of it.</summary>
+    /// <summary>Air settling as you tuck into a pack's slipstream, or opening up as you leave it.</summary>
     public void SfxDraft(bool on)
     {
-        if (on) { Play(1400, 380, 0.45f, 0.16f); Play(700, 190, 0.45f, 0.08f, true, 0.03f); }
-        else Play(380, 900, 0.3f, 0.12f);
+        if (on) { Play(Voice.Whoosh, 3200, 350, 0.7f, 0.08f); Note(Voice.Pad, G4 / 2, 1f, 0.06f); }
+        else Play(Voice.Whoosh, 400, 2000, 0.5f, 0.06f);
     }
 
-    /// <summary>Alarm: the pack is attacking.</summary>
+    /// <summary>The pack is attacking: three urgent minor stabs.</summary>
     public void SfxSurge()
     {
-        for (int i = 0; i < 3; i++) { Play(900, 900, 0.09f, 0.26f, true, i * 0.22f); Play(1200, 1200, 0.09f, 0.26f, true, i * 0.22f + 0.1f); }
+        for (int i = 0; i < 3; i++)
+        {
+            float d = i * 0.22f;
+            Note(Voice.Keys, A4, 0.22f, 0.1f, d, -0.2f);
+            Note(Voice.Keys, C5, 0.22f, 0.1f, d, 0.2f);
+            Note(Voice.Thump, 90, 0.18f, 0.14f, d);
+        }
     }
 
-    /// <summary>Little arpeggio: a rhythm zone starts.</summary>
-    public void SfxRhythmStart() { Play(523, 523, 0.1f, 0.22f, true); Play(659, 659, 0.1f, 0.22f, true, 0.1f); Play(784, 784, 0.1f, 0.22f, true, 0.2f); Play(1046, 1046, 0.25f, 0.22f, true, 0.3f); }
+    /// <summary>Rising keys arpeggio: a rhythm zone starts.</summary>
+    public void SfxRhythmStart()
+    {
+        float[] notes = { C5, E5, G5, C6 };
+        for (int i = 0; i < notes.Length; i++) Note(Voice.Keys, notes[i], i == 3 ? 0.9f : 0.5f, 0.09f, i * 0.09f, -0.45f + i * 0.3f);
+    }
 
     /// <summary>Locked onto / dropped off the target cadence.</summary>
     public void SfxRhythmLock(bool locked)
     {
-        if (locked) { Play(1046, 1046, 0.12f, 0.16f); Play(1568, 1568, 0.2f, 0.14f, false, 0.08f); }
-        else Play(660, 520, 0.18f, 0.12f, true);
+        if (locked) { Note(Voice.Bell, C6, 0.9f, 0.07f); Note(Voice.Bell, G6, 1f, 0.05f, 0.06f, 0.25f); }
+        else Play(Voice.Keys, B4, A4, 0.5f, 0.08f);
     }
 
-    /// <summary>Metronome click at the target cadence (played while off the beat).</summary>
-    public void SfxRhythmTick() => Play(2000, 1900, 0.03f, 0.13f);
+    /// <summary>Soft woodblock at the target cadence (played while off the beat).</summary>
+    public void SfxRhythmTick() { Note(Voice.Click, 2400, 0.05f, 0.12f); Note(Voice.Keys, E6, 0.08f, 0.02f); }
 
     /// <summary>Rhythm zone result: 2 = perfect, 1 = good, 0 = off beat.</summary>
     public void SfxRhythmResult(int grade)
     {
         if (grade >= 2) SfxGel();
-        else if (grade == 1) { Play(784, 784, 0.12f, 0.22f); Play(1046, 1046, 0.22f, 0.22f, false, 0.12f); }
-        else Play(440, 330, 0.35f, 0.18f, true);
+        else if (grade == 1) { Note(Voice.Bell, G5, 0.9f, 0.08f); Note(Voice.Bell, C6, 1.1f, 0.08f, 0.12f, 0.2f); }
+        else { Note(Voice.Keys, E4, 0.8f, 0.09f); Note(Voice.Keys, G4, 0.8f, 0.06f, 0.02f); }
     }
 
-    /// <summary>Big rising chord: entering a new biome.</summary>
+    /// <summary>Wide rising swell: entering a new biome.</summary>
     public void SfxBiome()
     {
-        Play(110, 220, 1.4f, 0.2f, true);
-        Play(165, 330, 1.4f, 0.16f, true, 0.1f);
-        Play(220, 440, 1.4f, 0.14f, false, 0.2f);
-        Play(1760, 1760, 0.6f, 0.12f, false, 1.3f);
-        Play(2637, 2637, 0.6f, 0.08f, false, 1.45f);
+        Play(Voice.Pad, A2, A3, 2.2f, 0.08f, 0, -0.4f);
+        Play(Voice.Pad, E3, E4, 2.2f, 0.06f, 0.1f, 0.4f);
+        Note(Voice.Pad, C4 * 2, 2.2f, 0.04f, 0.2f);
+        Play(Voice.Whoosh, 200, 3000, 1.8f, 0.06f);
+        Note(Voice.Bell, A5 * 2, 1.8f, 0.05f, 1.3f, -0.3f);
+        Note(Voice.Bell, E6 * 2, 1.8f, 0.035f, 1.45f, 0.3f);
     }
 
-    /// <summary>Fanfare: a new personal best.</summary>
-    public void SfxPersonalBest() { Play(523, 523, 0.12f, 0.25f, true); Play(659, 659, 0.12f, 0.25f, true, 0.12f); Play(784, 784, 0.12f, 0.25f, true, 0.24f); Play(1046, 1046, 0.5f, 0.28f, true, 0.36f); }
+    /// <summary>A new personal best: keys climb into a full bell chord.</summary>
+    public void SfxPersonalBest()
+    {
+        Note(Voice.Keys, C5, 0.6f, 0.11f, 0, -0.3f);
+        Note(Voice.Keys, E5, 0.6f, 0.11f, 0.12f, 0f);
+        Note(Voice.Keys, G5, 0.6f, 0.11f, 0.24f, 0.3f);
+        Note(Voice.Bell, C6, 1.8f, 0.1f, 0.36f, -0.2f);
+        Note(Voice.Bell, G6, 1.8f, 0.07f, 0.36f, 0.2f);
+        Note(Voice.Thump, 130, 0.5f, 0.2f, 0.36f);
+        Play(Voice.Whoosh, 600, 5000, 0.6f, 0.06f, 0.3f);
+    }
+
+    /// <summary>Debug: render every sound effect in turn (no music) to a 16-bit stereo WAV.</summary>
+    public void RenderSfxToWav(string path)
+    {
+        var cues = new Action[]
+        {
+            SfxShiftUp, SfxShiftDown, SfxUi, SfxForkAhead, SfxForkSelect, () => SfxCountdown(false), () => SfxCountdown(true),
+            SfxGel, SfxSector, () => SfxSlipstream(true), () => SfxSlipstream(false), SfxKm, SfxRaceStart,
+            () => SfxOvertake(true), () => SfxOvertake(false), SfxRaceFinal, SfxPackSpotted, () => SfxDraft(true), () => SfxDraft(false),
+            SfxSurge, SfxRhythmStart, () => SfxRhythmLock(true), () => SfxRhythmLock(false), SfxRhythmTick,
+            () => SfxRhythmResult(1), () => SfxRhythmResult(0), SfxBiome, SfxPersonalBest,
+        };
+        var samples = new List<Vector2>();
+        foreach (var cue in cues)
+        {
+            cue();
+            for (int i = 0; i < SR * 2.6f; i++)
+            {
+                var v = RenderSfx() * SfxVolume;
+                samples.Add(new Vector2(MathF.Tanh(v.X), MathF.Tanh(v.Y)));
+            }
+        }
+        // Then the wind: speeding up to ~45 km/h, a sprint, and easing off again.
+        for (int i = 0; i < SR * 16; i++)
+        {
+            float t = i / (float)SR;
+            Wind = t < 6 ? t / 6f * 0.85f : t < 12 ? 0.85f + (t > 7 && t < 11 ? 0.1f : 0f) : 0.85f * (16 - t) / 4f;
+            Sprint = t is > 7 and < 11 ? 1f : 0f;
+            var v = RenderWind() * WindVolume;
+            samples.Add(new Vector2(MathF.Tanh(v.X), MathF.Tanh(v.Y)));
+        }
+        Wind = Sprint = 0;
+        using var f = System.IO.File.Create(path);
+        using var w = new System.IO.BinaryWriter(f);
+        int n = samples.Count;
+        w.Write("RIFF"u8); w.Write(36 + n * 4); w.Write("WAVE"u8);
+        w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)2); w.Write(SR); w.Write(SR * 4); w.Write((short)4); w.Write((short)16);
+        w.Write("data"u8); w.Write(n * 4);
+        foreach (var s in samples)
+        {
+            w.Write((short)(Math.Clamp(s.X, -1f, 1f) * 32767));
+            w.Write((short)(Math.Clamp(s.Y, -1f, 1f) * 32767));
+        }
+    }
 }

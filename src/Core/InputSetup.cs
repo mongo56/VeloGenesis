@@ -23,6 +23,7 @@ public static class InputSetup
     public const string SimPowerUp = "sim_power_up";
     public const string SimPowerDown = "sim_power_down";
     public const string Screenshot = "screenshot";
+    public const string Fullscreen = "fullscreen";
     public const string Slipstream = "slipstream";
     public const string TimeSlower = "time_slower";
     public const string TimeFaster = "time_faster";
@@ -33,16 +34,17 @@ public static class InputSetup
 
     public static readonly Binding[] Bindings =
     {
-        new(GearUp, "Gear up  (ERG: intensity +5%)", new[] { Key.Up, Key.E }, new[] { JoyButton.RightShoulder, JoyButton.DpadUp }),
-        new(GearDown, "Gear down  (ERG: intensity -5%)", new[] { Key.Down, Key.Q }, new[] { JoyButton.LeftShoulder, JoyButton.DpadDown }),
+        new(GearUp, "Gear up  (ERG: intensity +5%)", new[] { Key.I, Key.Up }, new[] { JoyButton.RightShoulder, JoyButton.DpadUp }),
+        new(GearDown, "Gear down  (ERG: intensity -5%)", new[] { Key.K, Key.Down }, new[] { JoyButton.LeftShoulder, JoyButton.DpadDown }),
         new(ForkLeft, "Fork: take left branch", new[] { Key.Left, Key.A }, new[] { JoyButton.DpadLeft }),
         new(ForkRight, "Fork: take right branch", new[] { Key.Right, Key.D }, new[] { JoyButton.DpadRight }),
-        new(Slipstream, "Use slipstream", new[] { Key.Space, Key.B }, new[] { JoyButton.A, JoyButton.X }),
+        new(Slipstream, "Use slipstream", new[] { Key.Space, Key.Enter }, new[] { JoyButton.A, JoyButton.X }),
         new(Pause, "Pause", new[] { Key.Escape, Key.P }, new[] { JoyButton.Start }),
         new(Camera, "Change camera", new[] { Key.C }, new[] { JoyButton.Y }),
-        new(ToggleHud, "Show / hide HUD", new[] { Key.H }, Array.Empty<JoyButton>()),
+        new(ToggleHud, "Show / hide HUD", new[] { Key.U, Key.H }, Array.Empty<JoyButton>()),
         new(NextTrack, "Skip song", new[] { Key.N }, new[] { JoyButton.Back }),
         new(Screenshot, "Screenshot", new[] { Key.F12 }, Array.Empty<JoyButton>()),
+        new(Fullscreen, "Fullscreen / window", new[] { Key.F11 }, Array.Empty<JoyButton>()),
         new(SimPowerUp, "Simulator: more power", new[] { Key.W, Key.Equal }, Array.Empty<JoyButton>()),
         new(SimPowerDown, "Simulator: less power", new[] { Key.S, Key.Minus }, Array.Empty<JoyButton>()),
         new(TimeSlower, "Test rides: slower time", new[] { Key.F6 }, Array.Empty<JoyButton>()),
@@ -165,7 +167,7 @@ public static class InputSetup
         _ => $"Button {(int)b}",
     };
 
-    /// <summary>Short human description of the current bindings, e.g. "Space / B · pad A".</summary>
+    /// <summary>Short human description of the current bindings, e.g. "Space / Enter · pad A".</summary>
     public static string Describe(string action, bool includePad = true)
     {
         string keys = string.Join(" / ", KeysFor(action).Where(k => k != Key.None).Select(KeyName));

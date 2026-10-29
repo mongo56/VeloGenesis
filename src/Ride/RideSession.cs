@@ -73,6 +73,8 @@ public partial class RideSession : Node3D
     public float AvgPower => _powerTime > 0 ? (float)(_powerSum / _powerTime) : 0;
 
     public bool Paused;
+    // Ignore ride controls on the first frame of riding: the Enter / A press that clicked START or RESUME is still "just pressed".
+    bool _menuPressPending = true;
     public bool Finished { get; private set; }
     public event Action PauseRequested;
 
@@ -178,6 +180,7 @@ public partial class RideSession : Node3D
                 else trainer.SetSimulation(0, Physics.Crr, Physics.Cw);
             }
             Physics.Speed = Math.Max(0, Physics.Speed - dt * 4f);
+            UpdateWind(s);
             FollowCamera(dt);
             return;
         }
@@ -264,6 +267,7 @@ public partial class RideSession : Node3D
         World.GelsActive = Attract || CurrentZone >= PowerZones.GelZone;
 
         Music.Synth.Intensity = Attract ? 0.62f : Math.Clamp(Power3s / Math.Max(1, s.Ftp) / 1.05f + Math.Max(0, grade) * 0.01f, 0.05f, 1f);
+        UpdateWind(s);
 
         _avatar.GlobalPosition = World.RiderPosition;
         _avatar.Basis = Basis.LookingAt(World.RiderForward, Vector3.Up);
@@ -347,11 +351,31 @@ public partial class RideSession : Node3D
         }
     }
 
+    /// <summary>Wind noise: grows with speed (full at ~50 km/h), sheltered in a pack, gustier when sprinting or boosting.</summary>
+    void UpdateWind(Settings s)
+    {
+        var synth = Music.Synth;
+        if (Attract) { synth.Wind = synth.Sprint = 0; return; }
+        float wind = Math.Clamp(Physics.Speed / 14f, 0f, 1f);
+        if (PackActive && PackStatus == PackState.Drafting) wind *= 0.6f;
+        float sprint = Math.Clamp((Power3s / Math.Max(1, s.Ftp) - 1.15f) / 0.6f, 0f, 1f);
+        sprint = sprint * sprint * (3f - 2f * sprint);
+        if (SlipstreamActive) sprint = Math.Max(sprint, 0.6f);
+        synth.Wind = wind;
+        synth.Sprint = Paused ? 0 : sprint * wind;
+    }
+
+    public override void _ExitTree()
+    {
+        if (!Attract) Music.Synth.Wind = Music.Synth.Sprint = 0;
+    }
+
     void HandleInput()
     {
         if (Attract) return;
         if (Input.IsActionJustPressed(InputSetup.Pause)) PauseRequested?.Invoke();
-        if (Paused) return;
+        if (Paused) { _menuPressPending = true; return; }
+        if (_menuPressPending) { _menuPressPending = false; return; }
         if (Input.IsActionJustPressed(InputSetup.Camera)) _cam.Cycle();
         if (Input.IsActionJustPressed(InputSetup.ToggleHud) && Hud != null) Hud.Visible = !Hud.Visible;
         if (Input.IsActionJustPressed(InputSetup.NextTrack)) Music.Next();
