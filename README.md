@@ -12,6 +12,21 @@ Godot 4.7 (.NET / C#).
 | ![Chasing a draft pack](docs/screenshots/pack.jpg) | ![Rhythm zone: hold the target cadence](docs/screenshots/rhythm.jpg) |
 | ![Aurora Peaks biome](docs/screenshots/aurora.jpg) | ![Desert Grid biome](docs/screenshots/desert.jpg) |
 
+**ERG workouts:** pick a workout, length and FTP, then ride the intervals while the world plays on around you.
+
+![ERG sweet-spot interval inside a draft pack, with a rhythm zone](docs/screenshots/erg.jpg)
+
+| | |
+|---|---|
+| ![ERG workout setup with the interval graph](docs/screenshots/setup-erg.jpg) | ![Ride summary: power, TSS, time in zones and personal bests](docs/screenshots/erg-summary.jpg) |
+
+**Settings:** rider and bike, trainer difficulty, virtual shifting, display and quality, audio and music source,
+and fully rebindable keyboard and gamepad controls.
+
+| | |
+|---|---|
+| ![Settings screen](docs/screenshots/settings.jpg) | ![Key and gamepad bindings](docs/screenshots/controls.jpg) |
+
 ## Download and play
 
 1. Download `VeloGenesis-…-windows-x64.zip` from the [latest release](https://github.com/mongo56/VeloGenesis/releases/latest).
@@ -171,7 +186,7 @@ src/Audio/                  procedural synthwave engine + music director
 src/UI/                     neon theme, HUD, graphs, menus
 ```
 
-Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|devices|settings|controls|strava|pause`,
+Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|setup-erg|devices|settings|controls|strava|pause`,
 `--shot=out.png --shot-after=8`, `--skip=metres`, `--timescale=6`, `--sim-power=300`, `--seed=n`,
 `--quality=Low|Medium|High|Ultra`, `--music=Procedural|Files|Both|External`, `--finish-after=sec`, `--camera=n`, `--no-ble`.
 

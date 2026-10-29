@@ -168,6 +168,7 @@ public partial class Main : Node
             switch (screen)
             {
                 case "setup": ShowSetup(); break;
+                case "setup-erg": Settings.Current.LastMode = "Erg"; ShowSetup(); break;
                 case "devices": ShowDevices(); break;
                 case "settings": ShowSettings(); break;
                 case "controls":
