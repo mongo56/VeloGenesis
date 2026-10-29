@@ -4,13 +4,34 @@ Procedural neon cycling worlds for Bluetooth smart trainers. Every ride generate
 forking. Push harder to take the climb, or ease off to take the easier branch. The game is built with
 Godot 4.7 (.NET / C#).
 
-## Running
+![Racing a ghost rider through a neon gantry](docs/screenshots/ghost.jpg)
+
+| | |
+|---|---|
+| ![Main menu over the attract-mode world](docs/screenshots/menu.jpg) | ![Ride setup: terrain, power-ups and challenges](docs/screenshots/setup.jpg) |
+| ![Chasing a draft pack](docs/screenshots/pack.jpg) | ![Rhythm zone: hold the target cadence](docs/screenshots/rhythm.jpg) |
+| ![Aurora Peaks biome](docs/screenshots/aurora.jpg) | ![Desert Grid biome](docs/screenshots/desert.jpg) |
+
+## Download and play
+
+1. Download `VeloGenesis-…-windows-x64.zip` from the [latest release](https://github.com/mongo56/VeloGenesis/releases/latest).
+2. Unzip it anywhere and run `VeloGenesis.exe`. You don't need to install anything: the .NET runtime is included.
+3. Pair your trainer under **DEVICES**, or just press **START RIDE** and use the keyboard simulator (W / S).
+
+Requirements: Windows 10/11 (64-bit), a GPU with Vulkan support, and Bluetooth LE for trainers and heart-rate
+straps. The build isn't code-signed, so Windows SmartScreen may warn on first launch: choose
+*More info → Run anyway*.
+
+## Building from source
 
 Requirements: Windows 10/11 with Bluetooth LE, the .NET SDK (8+; 10 is used here), and
 **Godot 4.7.2 .NET** (`winget install GodotEngine.GodotEngine.Mono`).
 
 - **Editor:** open `project.godot` in Godot .NET, then press F5.
 - **Command line:** `godot --path .` (first run: `dotnet build` then `godot --path . --import`).
+
+- **Release build:** install the Godot 4.7.2 .NET export templates, then
+  `godot --headless --path . --export-release "Windows Desktop" export/VeloGenesis/VeloGenesis.exe`.
 
 `nuget.config` pins nuget.org for this project, because the machine-wide NuGet config has no sources.
 
@@ -156,4 +177,8 @@ Debug flags (after `--`): `--autoride=free|erg`, `--screen=setup|devices|setting
 
 ## Roadmap
 
-- Ideas: achievements for sectors, ANT+ FE-C, exported/installer builds.
+- Ideas: achievements for sectors, ANT+ FE-C, an installer.
+
+## License
+
+[MIT](LICENSE). The Chakra Petch fonts in `assets/fonts` are under the SIL Open Font License ([OFL.txt](assets/fonts/OFL.txt)).
